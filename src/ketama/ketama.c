@@ -41,11 +41,11 @@
 
 int luaopen_ketama(lua_State *L);
 
-// TODO: this is/should be the only struct that needs to be known between
-// proxy and hash selector modules. It's only needed because I can't quickly
-// figure any safe way to pass a function pointer anonymously :)
+struct proxy_hash_func {
+    uint64_t (*keyh_hash_func)(const void *key, size_t len, uint64_t seed);
+};
 struct proxy_hash_caller {
-    uint32_t (*selector_func)(const void *key, size_t len, void *ctx);
+    uint32_t (*selector_func)(uint64_t hash, void *ctx);
     void *ctx; // passed into selector_func.
 };
 
@@ -59,6 +59,11 @@ typedef struct {
     unsigned int total_buckets;
     cpoint continuum[]; // points to server ids.
 } ketama_t;
+
+static uint64_t ketama_key_hasher(const void *key, size_t len, uint64_t seed);
+static struct proxy_hash_func ketama_key_hash = {
+    ketama_key_hasher,
+};
 
 /* FROM ketama.c */
 static void ketama_md5_digest( char* inString, unsigned char md5pword[16] )
@@ -77,8 +82,8 @@ static int ketama_compare(const void *p1, const void *p2) {
     return (a->point < b->point) ? -1 : ((a->point > b->point) ? 1 : 0);
 }
 
-static uint32_t ketama_get_server(const void *key, size_t len, void *ctx) {
-    ketama_t *kt = (ketama_t *)ctx;
+static uint64_t ketama_key_hasher(const void *key, size_t len, uint64_t seed) {
+    // NOTE: seed is ignored!
     // embedding the md5 bits since key is specified with a length here.
     md5_state_t md5state;
     unsigned char digest[16];
@@ -92,6 +97,13 @@ static uint32_t ketama_get_server(const void *key, size_t len, void *ctx) {
                         | ( digest[2] << 16 )
                         | ( digest[1] <<  8 )
                         |   digest[0] );
+    return h;
+}
+
+// Note: must return lookupas as zero-indexed.
+static uint32_t ketama_get_server(uint64_t hash, void *ctx) {
+    ketama_t *kt = (ketama_t *)ctx;
+    unsigned int h = hash;
     int highp = kt->total_buckets;
     int lowp = 0, midp;
     unsigned int midval, midval1;
@@ -103,13 +115,13 @@ static uint32_t ketama_get_server(const void *key, size_t len, void *ctx) {
         midp = (int)( ( lowp+highp ) / 2 );
 
         if ( midp == kt->total_buckets )
-            return kt->continuum[0].id; // if at the end, roll back to zeroth
+            return kt->continuum[0].id-1; // if at the end, roll back to zeroth
 
         midval = kt->continuum[midp].point;
         midval1 = midp == 0 ? 0 : kt->continuum[midp-1].point;
 
         if ( h <= midval && h > midval1 )
-            return kt->continuum[midp].id;
+            return kt->continuum[midp].id-1;
 
         if ( midval < h )
             lowp = midp + 1;
@@ -117,7 +129,7 @@ static uint32_t ketama_get_server(const void *key, size_t len, void *ctx) {
             highp = midp - 1;
 
         if ( lowp > highp )
-            return kt->continuum[0].id;
+            return kt->continuum[0].id-1;
     }
 }
 /* END FROM ketama.c */
@@ -135,7 +147,7 @@ static int ketama_new(lua_State *L) {
     // NOTE: rawlen skips metatable redirection. if we care; lua_len instead.
     lua_Unsigned total = lua_rawlen(L, 1);
     // check for optional input (set bucket_size)
-    int argc = lua_gettop(L);
+    /*int argc = lua_gettop(L);
     if (argc > 1) {
         // override default bucket_size if given
         int success = 0;
@@ -144,7 +156,7 @@ static int ketama_new(lua_State *L) {
             lua_pushfstring(L, "%s: option argument must be an integer", __func__);
             lua_error(L);
         }
-    }
+    }*/
     // newuserdatauv() sized for pool*
     size_t size = sizeof(ketama_t) + sizeof(cpoint) * (total * bucket_size);
     ketama_t *kt = lua_newuserdatauv(L, size, 0);
@@ -233,6 +245,8 @@ int luaopen_ketama(lua_State *L) {
     };
 
     luaL_newlib(L, ketama_f);
+    lua_pushlightuserdata(L, &ketama_key_hash);
+    lua_setfield(L, -2, "hash");
 
     return 1;
 }
