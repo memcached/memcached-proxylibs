@@ -107,7 +107,7 @@ end
 -- TODO:
 -- v6 formatting
 local function make_backend(host)
-    print("making backend for... " .. host)
+    say("making backend for... " .. host)
     local ip, port, name = string.match(host, "^(.+):(%d+)%s+(%a+)")
     if ip ~= nil then
         return mcp.backend(name, ip, port, 1)
@@ -125,11 +125,19 @@ function M.pool(a)
 end
 function M.router(a)
     -- print(dump(a))
-    M.c.r = a
+    M.c.router = a
 end
 function M.my_zone(zone)
     -- print(zone)
     M.c.my_zone = zone
+end
+function M.verbose(opt)
+    M.is_verbose = opt
+end
+function say(...)
+    if M.is_verbose then
+        print(...)
+    end
 end
 
 -- place/replace the global function
@@ -139,21 +147,25 @@ function mcp_config_pools(old)
         router_type = "keyprefix",
         match_prefix = "/(%a+)/",
     }
-    -- TODO: This ends up blanking _all_ defaults if the user supplies a route
-    -- function. Should we merge them instead? (maybe not: impossible to
-    -- delete items since setting to nil removes from a table)
-    if M.c["r"] ~= nil then
-        r = M.c.r
+
+    -- merge in any missing defaults.
+    if M.c["router"] ~= nil then
+        for k, v in pairs(r) do
+            if M.c.router[k] ~= nil then
+                say("router: overriding default for", k)
+            else
+                M.c.router[k] = v
+            end
+        end
+        r = M.c.router
     end
 
-	--print("read:\n")
+    --print("read:\n")
     --print(dump(c), dump(r))
 	-- convert config into backend and pool objects.
 	local o = { pools = {} }
 
-	-- mcp.pool(be)
     -- TODO: figure out inherited defaults to use for the mcp.pool arguments
-    -- TODO: string match to mcp.backend() function
     for name, conf in pairs(c.pools) do
         local z = {}
         if c.my_zone == nil then
@@ -166,7 +178,9 @@ function mcp_config_pools(old)
             -- drop into weird zone?
             z = mcp.pool(p)
         else
-            -- TODO: error if a pool lacks a "my_zone" ?
+            if conf.zones[c.my_zone] == nil then
+                error("pool: " .. conf.name .. " missing local zone: " .. c.my_zone)
+            end
             for zname, backends in pairs(conf.zones) do
                 local p = {}
                 for _, be in pairs(backends) do
@@ -181,7 +195,6 @@ function mcp_config_pools(old)
 
     o.my_zone = c.my_zone
 
-    -- TODO: figure out the router configuration bits
     o.r = r
     -- reset the module's configuration so reload will work.
     M.c = { pools = {} }
@@ -189,7 +202,6 @@ function mcp_config_pools(old)
 end
 
 -- also intentionally creating a global.
--- TODO: r.default_pool instead of the SERVER_ERROR bit
 function mcp_config_routes(c)
     -- print(dump(c))
     local default = c.r["default_pool"]

@@ -1,5 +1,6 @@
 local s = require("simple")
 
+s.verbose(true)
 -- if my_zone() is commented out, will look for "backends" instead of "zones"
 s.my_zone("z1")
 
