@@ -5,6 +5,7 @@
 -- informed.
 
 local M = { c = { pools = {} } }
+local STAT_FAILOVER <const> = 1
 
 -- https://stackoverflow.com/questions/9168058/how-to-dump-a-table-to-console
 -- should probably get a really nice one of these for the library instead.
@@ -69,7 +70,6 @@ local function walkall_factory(pool)
     return function(r)
         local restable = mcp.await(r, p)
         -- walk results and return "best" result
-        -- print("length of await result table", #restable)
         for _, res in pairs(restable) do
             if res:ok() then
                 return res
@@ -90,22 +90,26 @@ local function failover_factory(zones, local_zone)
             far_zones[k] = v
         end
     end
+    local s = mcp.stat
     return function(r)
         local res = near_zone(r)
         if res:hit() == false then
-            for _, zone in pairs(far_zones) do
-                res = zone(r)
+            s(STAT_FAILOVER, 1)
+            -- got a local miss. attempt all replicas, return the first HIT
+            -- seen, if no hits return the first result.
+            local restable = mcp.await(r, far_zones, 1)
+            for _, res in pairs(restable) do
                 if res:hit() then
-                    break
+                    return res
                 end
             end
+
+            return restable[1]
         end
         return res -- send result back to client
     end
 end
 
--- TODO:
--- v6 formatting
 local function make_backend(host)
     say("making backend for... " .. host)
     local ip, port, name = string.match(host, "^(.+):(%d+)%s+(%a+)")
@@ -142,6 +146,7 @@ end
 
 -- place/replace the global function
 function mcp_config_pools(old)
+    mcp.add_stat(STAT_FAILOVER, "simple_failovers")
     local c = M.c
 	local r = {
         router_type = "keyprefix",
@@ -211,13 +216,13 @@ function mcp_config_routes(c)
 
     -- with a non-zoned configuration we can run with a completely flat config
     if c["my_zone"] == nil then
-        print("setting up a zoneless route")
+        say("setting up a zoneless route")
         local top = prefixtrim_factory(c.r.match_prefix, c.pools, default)
         mcp.attach(mcp.CMD_ANY_STORAGE, top)
     else
         -- else we have a more complex setup.
         local myz = c.my_zone
-        print("setting up a zoned route. local: " .. myz)
+        say("setting up a zoned route. local: " .. myz)
 
         -- process each pool to have replicated zones.
         local pools = {}
@@ -230,6 +235,10 @@ function mcp_config_routes(c)
                 [mcp.CMD_ADD] = all,
                 [mcp.CMD_SET] = all,
                 [mcp.CMD_DELETE] = all,
+                [mcp.CMD_APPEND] = all,
+                [mcp.CMD_PREPEND] = all,
+                [mcp.CMD_MS] = all,
+                [mcp.CMD_MD] = all,
             }
             pools[name] = command_factory(map, failover)
         end
