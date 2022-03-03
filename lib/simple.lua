@@ -114,11 +114,11 @@ local function make_backend(host)
     say("making backend for... " .. host)
     local ip, port, name = string.match(host, "^(.+):(%d+)%s+(%a+)")
     if ip ~= nil then
-        return mcp.backend(name, ip, port, 1)
+        return mcp.backend(name, ip, port)
     end
     local ip, port = string.match(host, "^(.+):(%d+)")
     if ip ~= nil then
-        return mcp.backend(host, ip, port, 1)
+        return mcp.backend(host, ip, port)
     end
     error(host .. " is an invalid backend string")
 end
