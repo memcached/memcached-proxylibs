@@ -1,0 +1,29 @@
+-- EXAMPLE:
+-- Single flat set of servers. Writes replicated to each server.
+-- If no sharding is desired, list a single backend in each zone.
+local s = require("simple")
+
+s.verbose(true)
+-- need to set which zone is preferred for reads.
+-- if none, it will use the first listed zone
+s.my_zone("z1")
+
+s.router{
+    router_type = "flat",
+}
+
+-- set/del/etc replicated to all zones.
+-- get starts on local zone, expands on miss
+s.pool{
+    name = "default",
+	zones = {
+      z1 = {
+		"127.0.0.1:11212",
+        "127.0.0.1:11213",
+      },
+      z2 = {
+		"127.0.0.1:11214",
+        "127.0.0.1:11215",
+	  },
+    }
+}
