@@ -22,6 +22,15 @@ local function dump(o)
    end
 end
 
+local function logreq_factory(route)
+    local nr = route
+    return function(r)
+        local res, detail = nr(r)
+        mcp.log_req(r, res, detail)
+        return res
+    end
+end
+
 -- NOTE: this function is culling key prefixes. it is an error to use it
 -- without a left anchored (^) pattern.
 local function prefixtrim_factory(pattern, list, default)
@@ -100,13 +109,13 @@ local function failover_factory(zones, local_zone)
             local restable = mcp.await(r, far_zones, 1)
             for _, res in pairs(restable) do
                 if res:hit() then
-                    return res
+                    return res, "failover_hit"
                 end
             end
 
-            return restable[1]
+            return restable[1], "failover_failure"
         end
-        return res -- send result back to client
+        return res, "primary_hit" -- send result back to client
     end
 end
 
@@ -247,7 +256,13 @@ function mcp_config_routes(c)
     if c.r.router_type == "flat" then
         if c["my_zone"] == nil then
             say("setting up a zoneless flat pool")
-            mcp.attach(mcp.CMD_ANY_STORAGE, o.pool)
+            local top
+            if c.r.log ~= nil then
+                top = logreq_factory(o.pool)
+            else
+                top = o.pool
+            end
+            mcp.attach(mcp.CMD_ANY_STORAGE, top)
         else
             local myz = c.my_zone
             say("setting up flat replicated zone. local: " .. myz)
@@ -267,13 +282,22 @@ function mcp_config_routes(c)
                 [mcp.CMD_MS] = all,
                 [mcp.CMD_MD] = all,
             }
-            mcp.attach(mcp.CMD_ANY_STORAGE, command_factory(map, failover))
+            local top
+            if c.r.log ~= nil then
+                top = logreq_factory(command_factory(map, failover))
+            else
+                top = command_factory(map, failover)
+            end
+            mcp.attach(mcp.CMD_ANY_STORAGE, top)
         end
     else
         -- with a non-zoned configuration we can run with a completely flat config
         if c["my_zone"] == nil then
             say("setting up a zoneless route")
             local top = prefixtrim_factory(c.r.match_prefix, c.pools, default)
+            if c.r.log ~= nil then
+                top = logreq_factory(top)
+            end
             mcp.attach(mcp.CMD_ANY_STORAGE, top)
         else
             -- else we have a more complex setup.
@@ -303,6 +327,9 @@ function mcp_config_routes(c)
             print(dump(pools))
 
             local top = prefixtrim_factory(c.r.match_prefix, pools, default)
+            if c.r.log ~= nil then
+                top = logreq_factory(top)
+            end
             mcp.attach(mcp.CMD_ANY_STORAGE, top)
         end
     end

@@ -10,6 +10,7 @@ s.my_zone("z1")
 
 s.router{
     router_type = "flat",
+    log = true,
 }
 
 -- set/del/etc replicated to all zones.
