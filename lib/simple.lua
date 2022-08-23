@@ -190,7 +190,7 @@ function mcp_config_pools(old)
             for _, be in pairs(conf.backends) do
                 table.insert(p, make_backend(be))
             end
-            o.pool = mcp.pool(p)
+            o.pool = mcp.pool(p, conf.distributor)
         else
             if conf.zones[c.my_zone] == nil then
                 error("pool: default missing local zone: " .. c.my_zone)
@@ -201,7 +201,15 @@ function mcp_config_pools(old)
                 for _, be in pairs(backends) do
                     table.insert(p, make_backend(be))
                 end
-                z[zname] = mcp.pool(p)
+                local dist = conf.distributor
+                local zdist = conf.zones.zone_distributors
+                if zdist ~= nil then
+                    if zdist[zname] ~= nil then
+                        print("using overridden distributor")
+                        dist = zdist[zname]
+                    end
+                end
+                z[zname] = mcp.pool(p, conf.distributor)
             end
             o.pool = z
         end
@@ -217,7 +225,7 @@ function mcp_config_pools(old)
                     table.insert(p, make_backend(be))
                 end
                 -- drop into weird zone?
-                z = mcp.pool(p)
+                z = mcp.pool(p, conf.distributor)
             else
                 if conf.zones[c.my_zone] == nil then
                     error("pool: " .. conf.name .. " missing local zone: " .. c.my_zone)
@@ -228,7 +236,15 @@ function mcp_config_pools(old)
                         -- parse backend
                         table.insert(p, make_backend(be))
                     end
-                    z[zname] = mcp.pool(p)
+                    local dist = conf.distributor
+                    local zdist = conf.zones.zone_distributors
+                    if zdist ~= nil then
+                        if zdist[zname] ~= nil then
+                            print("using overridden distributor")
+                            dist = zdist[zname]
+                        end
+                    end
+                    z[zname] = mcp.pool(p, conf.distributor)
                 end
             end
             o.pools[name] = z
