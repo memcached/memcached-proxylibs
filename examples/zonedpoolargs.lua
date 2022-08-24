@@ -1,13 +1,13 @@
 local s = require("simple")
 
-s.verbose(true)
-s.my_zone("z1")
+verbose(true)
+my_zone("z1")
 
 -- here we override the distributor for each zone.
 -- setting the hash "seed" value differently per zone means a failed server in
 -- z1 will cause misses to reroute across all of z2, instead of a specific
 -- machine in z2.
-s.pool{
+pool{
 	name = "foo",
 	zones = {
       z1 = {

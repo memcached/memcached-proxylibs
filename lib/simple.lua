@@ -132,19 +132,19 @@ local function make_backend(host)
     error(host .. " is an invalid backend string")
 end
 
-function M.pool(a)
+function pool(a)
     -- print(dump(a))
     M.c.pools[a.name] = a
 end
-function M.router(a)
+function router(a)
     -- print(dump(a))
     M.c.router = a
 end
-function M.my_zone(zone)
+function my_zone(zone)
     -- print(zone)
     M.c.my_zone = zone
 end
-function M.verbose(opt)
+function verbose(opt)
     M.is_verbose = opt
 end
 function say(...)

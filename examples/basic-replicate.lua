@@ -3,19 +3,19 @@
 -- If no sharding is desired, list a single backend in each zone.
 local s = require("simple")
 
-s.verbose(true)
+verbose(true)
 -- need to set which zone is preferred for reads.
 -- if none, it will use the first listed zone
-s.my_zone("z1")
+my_zone("z1")
 
-s.router{
+router{
     router_type = "flat",
     log = true,
 }
 
 -- set/del/etc replicated to all zones.
 -- get starts on local zone, expands on miss
-s.pool{
+pool{
     name = "default",
 	zones = {
       z1 = {
