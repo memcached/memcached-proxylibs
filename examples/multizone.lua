@@ -3,6 +3,8 @@ local s = require("simple")
 verbose(true)
 -- if my_zone() is commented out, will look for "backends" instead of "zones"
 my_zone("z1")
+-- You can pull this zone externally from another lua file, OS env, etc
+-- my_zone(os.getenv("MEMCACHE_MYZONE"))
 
 -- NOTE: optional to specify this if defaults are okay.
 router{
