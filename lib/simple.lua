@@ -119,18 +119,9 @@ local function failover_factory(zones, local_zone)
     end
 end
 
-local function make_backend(host)
-    say("making backend for... " .. host)
-    local ip, port, name = string.match(host, "^(.+):(%d+)%s+(%a+)")
-    if ip ~= nil then
-        return mcp.backend(name, ip, port)
-    end
-    local ip, port = string.match(host, "^(.+):(%d+)")
-    if ip ~= nil then
-        return mcp.backend(host, ip, port)
-    end
-    error(host .. " is an invalid backend string")
-end
+--
+-- User interface functions
+--
 
 function pool(a)
     -- print(dump(a))
@@ -151,6 +142,55 @@ function say(...)
     if M.is_verbose then
         print(...)
     end
+end
+
+--
+-- Loader functions
+--
+
+local function make_backend(host)
+    say("making backend for... " .. host)
+
+    local ip, port, name = string.match(host, "^(.+):(%d+)%s+(%a+)")
+    if ip ~= nil then
+        return mcp.backend(name, ip, port)
+    end
+
+    local ip, port = string.match(host, "^(.+):(%d+)")
+    if ip ~= nil then
+        return mcp.backend(host, ip, port)
+    end
+
+    error(host .. " is an invalid backend string")
+end
+
+local function make_pool(conf)
+    local p = {}
+
+    for _, be in pairs(conf.backends) do
+        table.insert(p, make_backend(be))
+    end
+
+    return mcp.pool(p, conf.distributor)
+end
+
+local function make_zoned_pool(conf, zname, backends)
+    local p = {}
+
+    for _, be in pairs(backends) do
+        table.insert(p, make_backend(be))
+    end
+
+    local dist = conf.distributor
+    local zdist = conf.zone_distributors
+    if zdist ~= nil then
+        if zdist[zname] ~= nil then
+            say("using overridden distributor for zone " .. zname)
+            dist = zdist[zname]
+        end
+    end
+
+    return mcp.pool(p, dist)
 end
 
 -- place/replace the global function
@@ -186,30 +226,14 @@ function mcp_config_pools(old)
         local conf = c.pools["default"]
         if c.my_zone == nil then
             -- no zone configured, manage a single pool.
-            local p = {}
-            for _, be in pairs(conf.backends) do
-                table.insert(p, make_backend(be))
-            end
-            o.pool = mcp.pool(p, conf.distributor)
+            o.pool = make_pool(conf)
         else
             if conf.zones[c.my_zone] == nil then
                 error("pool: default missing local zone: " .. c.my_zone)
             end
             local z = {}
             for zname, backends in pairs(conf.zones) do
-                local p = {}
-                for _, be in pairs(backends) do
-                    table.insert(p, make_backend(be))
-                end
-                local dist = conf.distributor
-                local zdist = conf.zones.zone_distributors
-                if zdist ~= nil then
-                    if zdist[zname] ~= nil then
-                        print("using overridden distributor")
-                        dist = zdist[zname]
-                    end
-                end
-                z[zname] = mcp.pool(p, conf.distributor)
+                z[zname] = make_zoned_pool(conf, zname, backends)
             end
             o.pool = z
         end
@@ -218,33 +242,14 @@ function mcp_config_pools(old)
         for name, conf in pairs(c.pools) do
             local z = {}
             if c.my_zone == nil then
-                local p = {}
                 -- no zone configured, build pool from 'backends'
-                for _, be in pairs(conf.backends) do
-                    -- string match for server.
-                    table.insert(p, make_backend(be))
-                end
-                -- drop into weird zone?
-                z = mcp.pool(p, conf.distributor)
+                z = make_pool(conf)
             else
                 if conf.zones[c.my_zone] == nil then
                     error("pool: " .. conf.name .. " missing local zone: " .. c.my_zone)
                 end
                 for zname, backends in pairs(conf.zones) do
-                    local p = {}
-                    for _, be in pairs(backends) do
-                        -- parse backend
-                        table.insert(p, make_backend(be))
-                    end
-                    local dist = conf.distributor
-                    local zdist = conf.zones.zone_distributors
-                    if zdist ~= nil then
-                        if zdist[zname] ~= nil then
-                            print("using overridden distributor")
-                            dist = zdist[zname]
-                        end
-                    end
-                    z[zname] = mcp.pool(p, conf.distributor)
+                    z[zname] = make_zoned_pool(conf, zname, backends)
                 end
             end
             o.pools[name] = z
