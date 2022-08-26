@@ -1,3 +1,4 @@
+package.loaded["simple"] = nil
 local s = require("simple")
 
 -- shorthand for quick defaults

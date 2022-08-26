@@ -1,6 +1,11 @@
 -- EXAMPLE:
 -- Single flat set of servers. Writes replicated to each server.
 -- If no sharding is desired, list a single backend in each zone.
+
+-- this extra package.loaded line ensures the 'simple' library gets reloaded when the proxy
+-- reloads its configuration. Optional if you never plan on reloading the
+-- library.
+package.loaded["simple"] = nil
 local s = require("simple")
 
 verbose(true)

@@ -1,3 +1,4 @@
+package.loaded["simple"] = nil
 local s = require("simple")
 
 -- by default, sends "/foo/*" to "foo" and "/bar/*" to "bar"
