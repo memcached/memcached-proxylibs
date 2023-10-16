@@ -241,7 +241,7 @@ function mcp_config_pools(old)
         -- TODO: figure out inherited defaults to use for the mcp.pool arguments
         for name, conf in pairs(c.pools) do
             local z = {}
-            if c.my_zone == nil then
+            if c.my_zone == nil or conf.zones == nil then
                 -- no zone configured, build pool from 'backends'
                 z = make_pool(conf)
             else
@@ -315,7 +315,7 @@ function mcp_config_routes(c)
         -- with a non-zoned configuration we can run with a completely flat config
         if c["my_zone"] == nil then
             say("setting up a zoneless route")
-            local top = prefixtrim_factory(c.r.match_prefix, c.pools, default)
+            local top = prefixtrim_factory(c.r.match_prefix, c.pools, c.pools[default])
             if c.r.log ~= nil then
                 top = logreq_factory(top)
             end
@@ -328,26 +328,31 @@ function mcp_config_routes(c)
             -- process each pool to have replicated zones.
             local pools = {}
             for name, zones in pairs(c.pools) do
-                local failover = failover_factory(zones, myz)
-                local all = walkall_factory(zones)
-                -- TODO: flesh this out more; append/prepend/replace/etc?
-                -- think a bit about good defaults?
-                local map = {
-                    [mcp.CMD_ADD] = all,
-                    [mcp.CMD_SET] = all,
-                    [mcp.CMD_DELETE] = all,
-                    [mcp.CMD_APPEND] = all,
-                    [mcp.CMD_PREPEND] = all,
-                    [mcp.CMD_INCR] = all,
-                    [mcp.CMD_DECR] = all,
-                    [mcp.CMD_MS] = all,
-                    [mcp.CMD_MD] = all,
-                }
-                pools[name] = command_factory(map, failover)
+                if type(zones) == "userdata" then
+                    -- flat pool.
+                    pools[name] = zones
+                else
+                    local failover = failover_factory(zones, myz)
+                    local all = walkall_factory(zones)
+                    -- TODO: flesh this out more; append/prepend/replace/etc?
+                    -- think a bit about good defaults?
+                    local map = {
+                        [mcp.CMD_ADD] = all,
+                        [mcp.CMD_SET] = all,
+                        [mcp.CMD_DELETE] = all,
+                        [mcp.CMD_APPEND] = all,
+                        [mcp.CMD_PREPEND] = all,
+                        [mcp.CMD_INCR] = all,
+                        [mcp.CMD_DECR] = all,
+                        [mcp.CMD_MS] = all,
+                        [mcp.CMD_MD] = all,
+                    }
+                    pools[name] = command_factory(map, failover)
+                end
             end
             print(dump(pools))
 
-            local top = prefixtrim_factory(c.r.match_prefix, pools, default)
+            local top = prefixtrim_factory(c.r.match_prefix, pools, pools[default])
             if c.r.log ~= nil then
                 top = logreq_factory(top)
             end
