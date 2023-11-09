@@ -281,7 +281,7 @@ function mcp_config_routes(c)
             if c.r.log ~= nil then
                 top = logreq_factory(o.pool)
             else
-                top = o.pool
+                top = function(r) return o.pool(r) end
             end
             mcp.attach(mcp.CMD_ANY_STORAGE, top)
         else
