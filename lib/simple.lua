@@ -33,26 +33,41 @@ end
 
 -- NOTE: this function is culling key prefixes. it is an error to use it
 -- without a left anchored (^) pattern.
-local function prefixtrim_factory(pattern, list, default)
+local function prefix_factory(pattern, list, default, do_trim)
     -- tag the start anchor so users don't have to remember.
     -- might want to test if it's there first? :)
     local p = "^" .. pattern
     local l = list
     local d = default
-    return function(r)
-        local i, j, match = string.find(r:key(), p)
-        local route = nil
-        if match ~= nil then
-            -- remove the key prefix so we don't waste storage.
-            r:ltrimkey(j)
-            route = l[match]
+    if do_trim then
+        return function(r)
+            local i, j, match = string.find(r:key(), p)
+            local route = nil
+            if match ~= nil then
+                -- remove the key prefix so we don't waste storage.
+                r:ltrimkey(j)
+                route = l[match]
+            end
+            if route == nil then
+                return d(r)
+            else
+                return route(r)
+            end
         end
-        if route == nil then
-            return d(r)
-        else
-            return route(r)
+   else
+        return function(r)
+            local i, j, match = string.find(r:key(), p)
+            local route = nil
+            if match ~= nil then
+                route = l[match]
+            end
+            if route == nil then
+                return d(r)
+            else
+                return route(r)
+            end
         end
-    end
+   end
 end
 
 local function command_factory(map, default)
@@ -200,6 +215,7 @@ function mcp_config_pools(old)
 	local r = {
         router_type = "keyprefix",
         match_prefix = "/(%a+)/",
+        prefix_trim = true,
     }
 
     -- merge in any missing defaults.
@@ -315,7 +331,7 @@ function mcp_config_routes(c)
         -- with a non-zoned configuration we can run with a completely flat config
         if c["my_zone"] == nil then
             say("setting up a zoneless route")
-            local top = prefixtrim_factory(c.r.match_prefix, c.pools, c.pools[default])
+            local top = prefix_factory(c.r.match_prefix, c.pools, c.pools[default], c.r.prefix_trim)
             if c.r.log ~= nil then
                 top = logreq_factory(top)
             end
@@ -352,7 +368,7 @@ function mcp_config_routes(c)
             end
             print(dump(pools))
 
-            local top = prefixtrim_factory(c.r.match_prefix, pools, pools[default])
+            local top = prefix_factory(c.r.match_prefix, pools, pools[default], c.r.prefix_trim)
             if c.r.log ~= nil then
                 top = logreq_factory(top)
             end
