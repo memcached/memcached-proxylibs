@@ -227,25 +227,45 @@ end
 
 -- re-wrap the arguments to create the function generator within a worker
 -- thread.
-local function make_route(label, cmd, arg, pools)
-    dsay("generating a route:", label, cmd)
+local function make_route(arg, ctx)
+    dsay("generating a route:", ctx:label(), ctx:cmd())
     -- resolve the named function to a real function from global
     local f = _G[arg.f]
     -- create and return the funcgen object
-    return f(pools, arg.a, label, cmd)
+    return f(arg.a, ctx)
 end
 
 -- create and return a full router object.
 -- 1) walk the input route set, copying into a new map
 -- 2) execute any route handlers found
--- 3) route handler resolve pool names to pools and create an fgen
+-- 3) route handler resolves children into (pool/fgen) and returns fgen
 -- 4) create the root route handler and return
 -- NOTE: we do an unfortunate duck typing of a map entry, as metatables can't
 -- cross the cross-VM barrier so we can't type the route handlers. Map entries
 -- can have sub-maps and they'll both just look like tables.
+-- TODO: support top level command only maps
 local function make_router(set, pools)
     local map = {}
     dsay("making a new router")
+
+    local ctx = {
+        label = function(self)
+            return self._label
+        end,
+        cmd = function(self)
+            return self._cmd
+        end,
+        get_child = function(self, child)
+            if type(child) == "string" then
+                return pools[child]
+            elseif type(child) == "table" then
+                return make_route(child, self)
+            else
+                error("invalid child given to route handler")
+            end
+        end
+    }
+
     -- create a new map with route entries resolved.
     for mk, mv in pairs(set.map) do
         -- duck type: if this map is a route or a command map
@@ -254,14 +274,18 @@ local function make_router(set, pools)
             -- command map
             local cmap = {}
             for cmk, cmv in pairs(mv) do
-                local fgen = make_route(mk, cmk, cmv, pools)
+                ctx._label = mk
+                ctx._cmd = cmk
+                local fgen = make_route(cmv, ctx)
                 cmap[cmk] = fgen
             end
             map[mk] = cmap
         else
             dsay("route:", mk)
             -- route function
-            local fgen = make_route(mk, mcp.CMD_ANY_STORAGE, mv, pools)
+            ctx._label = mk
+            ctx._cmd = mcp.CMD_ANY_STORAGE
+            local fgen = make_route(mv, ctx)
             map[mk] = fgen
         end
     end
@@ -271,7 +295,9 @@ local function make_router(set, pools)
     -- convenience functions, default sets, etc.
     local conf = set.conf
     if set.default then
-        conf.default = make_route("default", mcp.CMD_ANY_STORAGE, set.default, pools)
+        ctx._label = "default"
+        ctx._cmd = mcp.CMD_ANY_STORAGE
+        conf.default = make_route(set.default, ctx)
     end
 
     conf.map = map
@@ -375,11 +401,12 @@ local function route_allfastest_f(rctx, arg)
 end
 
 -- copy request to all children, but return first response
-function route_allfastest_start(pools, a, label, cmd)
+function route_allfastest_start(a, ctx)
     local fgen = mcp.funcgen_new()
     local o = {}
     for _, child in pairs(a.children) do
-        table.insert(o, fgen:new_handle(pools[child]))
+        local c = ctx:get_child(child)
+        table.insert(o, fgen:new_handle(c))
     end
 
     fgen:ready({ a = o, n = label, f = route_allfastest_f })
@@ -403,7 +430,7 @@ end
 
 -- randomize the pool list
 -- walk one at a time
-local function route_latest_start(pools, a, label, cmd)
+local function route_latest_start(a, ctx)
     local fgen = mcp.funcgen_new()
     local o = { t = {}, c = 0 }
     -- NOTE: if given a limit, we don't actually need handles for every pool.
@@ -412,7 +439,8 @@ local function route_latest_start(pools, a, label, cmd)
     -- Not doing this _right now_ because I'm not confident children is an
     -- array or not.
     for _, child in pairs(children) do
-        table.insert(o.t, fgen:new_handle(pools[child]))
+        local c = ctx:get_child(child)
+        table.insert(o.t, fgen:new_handle(c))
         o.c = o.c + 1
     end
 
