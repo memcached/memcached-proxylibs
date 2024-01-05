@@ -220,8 +220,29 @@ end
 -- TODO: allow a way to override which attach() happens for a router.
 -- by default we just do CMD_ANY_STORAGE
 -- NOTE: this function should be used for vadliating/preparsing the router
--- config and routes sections, but right now it doesn't do anything.
+-- config and routes sections.
 local function routes_parse(routes, pools)
+    for tag, set in pairs(routes) do
+        set.is_prefix_map = true
+        local seen_string = false
+        local seen_number = false
+        for k, v in pairs(set.map) do
+            -- balk if we've seen both strings and numbers.
+            if type(k) == "number" then
+                seen_number = true
+                dsay("router for ", tag, "is not a command map")
+                set.is_prefix_map = false
+            elseif type(k) == "string" then
+                seen_string = true
+            else
+                error("router map keys must be strings or numbers")
+            end
+        end
+
+        if seen_string and seen_number then
+            error("router map keys must be only prefixes or only commands")
+        end
+    end
     return { r = routes, p = pools }
 end
 
@@ -266,33 +287,46 @@ local function make_router(set, pools)
         end
     }
 
-    -- create a new map with route entries resolved.
-    for mk, mv in pairs(set.map) do
-        -- duck type: if this map is a route or a command map
-        if mv["f"] == nil then
-            dsay("command map:", mk)
-            -- command map
-            local cmap = {}
-            for cmk, cmv in pairs(mv) do
+    if set.is_prefix_map then
+        -- create a new map with route entries resolved.
+        for mk, mv in pairs(set.map) do
+            -- duck type: if this map is a route or a command map
+            if mv["f"] == nil then
+                dsay("command map:", mk)
+                -- command map
+                local cmap = {}
+                for cmk, cmv in pairs(mv) do
+                    ctx._label = mk
+                    ctx._cmd = cmk
+                    local fgen = make_route(cmv, ctx)
+                    if fgen == nil then
+                        error("route start handler did not return a generator")
+                    end
+                    cmap[cmk] = fgen
+                end
+                map[mk] = cmap
+            else
+                dsay("route:", mk)
+                -- route function
                 ctx._label = mk
-                ctx._cmd = cmk
-                local fgen = make_route(cmv, ctx)
+                ctx._cmd = mcp.CMD_ANY_STORAGE
+                local fgen = make_route(mv, ctx)
                 if fgen == nil then
                     error("route start handler did not return a generator")
                 end
-                cmap[cmk] = fgen
+                map[mk] = fgen
             end
-            map[mk] = cmap
-        else
-            dsay("route:", mk)
-            -- route function
-            ctx._label = mk
-            ctx._cmd = mcp.CMD_ANY_STORAGE
-            local fgen = make_route(mv, ctx)
+        end
+    else
+        -- we're only routing based on the command, no prefix strings
+        ctx._label = "default"
+        for cmk, cmv in pairs(set.map) do
+            ctx._cmd = cmk
+            local fgen = make_route(cmv, ctx)
             if fgen == nil then
                 error("route start handler did not return a generator")
             end
-            map[mk] = fgen
+            map[cmk] = fgen
         end
     end
 
@@ -307,7 +341,11 @@ local function make_router(set, pools)
     end
 
     conf.map = map
-    return mcp.router_new(conf)
+    if set.is_prefix_map then
+        return mcp.router_new(conf)
+    else
+        return conf
+    end
 end
 
 --
@@ -335,8 +373,28 @@ function mcp_config_pools()
     return conf
 end
 
+local function route_attach_map(root, tag)
+    -- if we have a default, first attach everything to CMD_ANY_STORAGE
+    if root.default then
+        mcp.attach(mcp.CMD_ANY_STORAGE, root.default, tag)
+    end
+
+    -- now override anything more specific
+    for cmd, fgen in pairs(root.map) do
+        mcp.attach(cmd, fgen, tag)
+    end
+end
+
 -- TODO: need a method to nil out a tag/route if unspecified. I think this
 -- doesn't work from the API level.
+-- NOTES:
+-- 1) the "router" object is prefix/key matching only. for command maps we
+-- directly set the handlers against mcp.attach()
+-- 2) the system does technically support:
+--    command map -> prefix map -> route|command map
+--    ... but we don't allow this with this library, not right now.
+-- 3) it's possible to support 2 by doing even more pre-processing, so if
+-- there's demand I don't believe anything here would make it impossible.
 function mcp_config_routes(c)
     local routes = c.r
     local pools = c.p
@@ -349,10 +407,22 @@ function mcp_config_routes(c)
         local root = make_router(set, pools)
         if tag == "default" then
             dsay("attaching to proxy default tag")
-            mcp.attach(mcp.CMD_ANY_STORAGE, root)
+            if type(root) == "userdata" then
+                dsay("attaching a router")
+                mcp.attach(mcp.CMD_ANY_STORAGE, root)
+            else
+                dsay("attaching a command map")
+                route_attach_map(root)
+            end
         else
             dsay("attaching to proxy for tag:", tag)
-            mcp.attach(mcp.CMD_ANY_STORAGE, root, tag)
+            if type(root) == "userdata" then
+                dsay("attaching a router")
+                mcp.attach(mcp.CMD_ANY_STORAGE, root, tag)
+            else
+                dsay("attaching a command map")
+                route_attach_map(root, tag)
+            end
         end
     end
     dsay("mcp_config_routes: done")
