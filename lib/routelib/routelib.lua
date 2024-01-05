@@ -277,6 +277,9 @@ local function make_router(set, pools)
                 ctx._label = mk
                 ctx._cmd = cmk
                 local fgen = make_route(cmv, ctx)
+                if fgen == nil then
+                    error("route start handler did not return a generator")
+                end
                 cmap[cmk] = fgen
             end
             map[mk] = cmap
@@ -286,6 +289,9 @@ local function make_router(set, pools)
             ctx._label = mk
             ctx._cmd = mcp.CMD_ANY_STORAGE
             local fgen = make_route(mv, ctx)
+            if fgen == nil then
+                error("route start handler did not return a generator")
+            end
             map[mk] = fgen
         end
     end
@@ -373,6 +379,10 @@ function route_latest(t)
     return { f = "route_latest_start", a = t }
 end
 
+function route_split(t)
+    return { f = "route_split_start", a = t }
+end
+
 --
 -- Worker level Route handlers
 --
@@ -388,6 +398,7 @@ end
 -- so many layers of generation :(
 local function route_allfastest_f(rctx, arg)
     local mode = mcp.WAIT_ANY
+    dsay("generating an allfastest function")
     return function(r)
         rctx:enqueue(r, arg)
         local done = rctx:wait_cond(1, mode)
@@ -403,17 +414,18 @@ end
 -- copy request to all children, but return first response
 function route_allfastest_start(a, ctx)
     local fgen = mcp.funcgen_new()
+    dsay("starting an allfastest handler")
     local o = {}
     for _, child in pairs(a.children) do
         local c = ctx:get_child(child)
         table.insert(o, fgen:new_handle(c))
     end
 
-    fgen:ready({ a = o, n = label, f = route_allfastest_f })
+    fgen:ready({ a = o, n = ctx:label(), f = route_allfastest_f })
     return fgen
 end
 
-local function route_latest_r(rctx, arg)
+local function route_latest_f(rctx, arg)
     local limit = arg.limit
     local count = arg.count
     local t = arg.t
@@ -430,7 +442,7 @@ end
 
 -- randomize the pool list
 -- walk one at a time
-local function route_latest_start(a, ctx)
+function route_latest_start(a, ctx)
     local fgen = mcp.funcgen_new()
     local o = { t = {}, c = 0 }
     -- NOTE: if given a limit, we don't actually need handles for every pool.
@@ -453,7 +465,32 @@ local function route_latest_start(a, ctx)
 
     o.limit = a.failover_count
 
-    fgen:ready({ a = o, n = label, f = route_latest_f })
+    fgen:ready({ a = o, n = ctx:label(), f = route_latest_f })
+    return fgen
+end
+
+local function route_split_f(rctx, arg)
+    local a = arg.child_a
+    local b = arg.child_b
+    dsay("generating a split function")
+
+    return function(r)
+        rctx:enqueue(r, b)
+        return rctx:enqueue_and_wait(r, a)
+    end
+end
+
+-- split route
+-- mostly exists just to test recursive functions
+-- should add options to do things like "copy N% of traffic from A to B"
+function route_split_start(a, ctx)
+    local fgen = mcp.funcgen_new()
+    local o = {}
+    dsay("starting a split route handler")
+    o.child_a = fgen:new_handle(ctx:get_child(a.child_a))
+    o.child_b = fgen:new_handle(ctx:get_child(a.child_b))
+    fgen:ready({ a = o, n = ctx:label(), f = route_split_f })
+
     return fgen
 end
 
