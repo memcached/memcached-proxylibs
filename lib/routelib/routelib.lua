@@ -162,8 +162,8 @@ local function settings_parse(a)
         if func ~= nil then
             say("changing global setting:", setting, "to:", value)
             func(value)
-        elseif setting == "poolopts" then
-            error("unimplemented")
+        elseif setting == "pool_options" then
+            M.pool_options = value
         end
     end
 end
@@ -223,7 +223,22 @@ end
 local function pools_parse(a)
     local pools = {}
     for name, conf in pairs(a) do
-        local popts = conf.options
+        local popts = {}
+        -- seed global overrides
+        if M.pool_options then
+            for k, v in pairs(M.pool_options) do
+                dsay("pool using global override:", k, v)
+                popts[k] = v
+            end
+        end
+        -- apply local overrides
+        if conf.options then
+            for k, v in pairs(conf.options) do
+                dsay("pool using local override:", k, v)
+                popts[k] = v
+            end
+        end
+
         local bopts = conf.backend_options
         local s = {}
         -- TODO: some convenience functions for asserting?
