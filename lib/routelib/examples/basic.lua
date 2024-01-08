@@ -25,7 +25,9 @@ function config()
         },
         bar = {
             backends = {
-                "127.0.0.1:11216",
+                -- it's also possible to directly describe backends with a
+                -- table, and individually override traits
+                { host = "127.0.0.1", port = 11216, retrytimeout = 5 }
             }
         },
     }

@@ -3,6 +3,8 @@ local s = require("routelib")
 verbose(true)
 debug(true)
 
+-- we configure route_latest to track itself with a stats counter, accessable
+-- via "stats proxy" under user_* fields.
 function config()
     pools{
         foo = {
