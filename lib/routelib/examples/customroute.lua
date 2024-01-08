@@ -41,6 +41,13 @@ function route_myhello_conf(t, ctx)
     -- in a complex setup, we could use the route label as an index into a
     -- global structure with further data/overrides/etc.
     t.msg = t.msg .. " " .. ctx:label()
+    -- if user asked for a stats counter, lets track how often this route was
+    -- called.
+    -- you could construct a string from the label to get a route and handler
+    -- specific counter instead.
+    if t.stats then
+        t.stast_id = stats_get_id("myhello")
+    end
 
     -- the result table must be a pure lua object, as it is copied between
     -- lua VM's from the configuration thread to the worker threads.
@@ -74,7 +81,12 @@ function route_myhello_f(rctx, a)
     -- now at runtime we will never make allocations (and thus never collect
     -- garbage)
     local msg = "SERVER_ERROR " .. a.msg .. "\r\n"
+    local stats_id = t.stats_id
+    local s = mcp.stat
     return function(r)
+        if stats_id then
+            s(stats_id, 1)
+        end
         return msg
     end
 end
