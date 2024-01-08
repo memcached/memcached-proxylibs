@@ -1,8 +1,9 @@
 package.loaded["routelib"] = nil
 local s = require("routelib")
 verbose(true)
-debug(true)
 
+-- if you don't want to route based on prefix, but instead just based on the
+-- command used, replace map with cmap when building routes{}
 function config()
     pools{
         foo = {
@@ -19,11 +20,7 @@ function config()
     }
 
     routes{
-        conf = {
-            mode = "prefix",
-            stop = "/"
-        },
-        map = {
+        cmap = {
             [mcp.CMD_GET] = route_allfastest{
                 children = { "foo" },
             },

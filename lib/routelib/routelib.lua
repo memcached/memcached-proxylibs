@@ -140,6 +140,10 @@ local function settings_parse(a)
             mcp.tcp_keepalive(v)
         end,
         ["active_request_limit"] = function(v)
+            -- alias for convenience.
+            mcp.active_req_limit(v)
+        end,
+        ["active_req_limit"] = function(v)
             mcp.active_req_limit(v)
         end,
         ["buffer_memory_limit"] = function(v)
@@ -313,9 +317,11 @@ local function configure_router(set)
     if set.map then
         -- a prefix map
         for mk, mv in pairs(set.map) do
+            dsay("examining route map entry:", mk)
             ctx._label = mk
             ctx._cmd = mcp.CMD_ANY_STORAGE
             if (getmetatable(mv) == CommandMap) then
+                dsay("parsing a CommandMap entry")
                 for cmk, cmv in pairs(mv) do
                     if (getmetatable(cmv) ~= RouteConf) then
                         error("bad entry in route table map")
@@ -325,6 +331,7 @@ local function configure_router(set)
                     mv[cmk] = configure_route(cmv, ctx)
                 end
             elseif (getmetatable(mv) == RouteConf) then
+                dsay("parsing a RouteConf entry")
                 set.map[mk] = configure_route(mv, ctx)
             else
                 error("unknown route map type")

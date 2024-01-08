@@ -34,21 +34,22 @@ end
 -- top of this file.
 
 -- the "_conf()" function is run from the configuration thread
--- at this point you can grab stats counters, or otherwise query global data
--- or morph passed-in requests
+-- at this point you can grab stats counter ids, or otherwise query global data
+-- or morph passed-in data
 function route_myhello_conf(t, ctx)
     -- here we tag the route label onto our message.
     -- in a complex setup, we could use the route label as an index into a
     -- global structure with further data/overrides/etc.
     t.msg = t.msg .. " " .. ctx:label()
 
-    -- the result table 't' must be a pure lua object, as it is copied between
-    -- lua VM's from the configuration thread to the worker thread.
+    -- the result table must be a pure lua object, as it is copied between
+    -- lua VM's from the configuration thread to the worker threads.
+    -- this means special user objects, metatables, etc, will not transfer.
     return { f = "route_myhello_start", a = t }
 end
 
 -- all of the rest is run from each worker thread.
--- these are run in different lua VM's, so you cannot pass global data from
+-- these are run in different lua VM's, so you cannot access global data from
 -- the configuration thread.
 
 -- called once during the worker configuration phase: configures and returns a
@@ -63,7 +64,7 @@ function route_myhello_start(a, ctx)
     return fgen
 end
 
--- called once per "query slot" needed to satisfy parallel requests
+-- called once per "query slot" needed to satisfy parallel requests.
 -- returned function is reused after each request
 function route_myhello_f(rctx, a)
     -- do any processing, unwrapping referenced data from deeply nested tables
