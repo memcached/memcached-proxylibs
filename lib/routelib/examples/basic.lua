@@ -11,14 +11,14 @@ function config()
 
     pools{
         foo = {
-            server_options = { connecttimeout = 5, retrytimeout = 1 },
-            servers = {
+            backend_options = { connecttimeout = 5, retrytimeout = 1 },
+            backends = {
                 "127.0.0.1:11214",
                 "127.0.0.1:11215 _down_",
             }
         },
         bar = {
-            servers = {
+            backends = {
                 "127.0.0.1:11216",
             }
         },

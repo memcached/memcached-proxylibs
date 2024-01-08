@@ -6,12 +6,12 @@ debug(true)
 function config()
     pools{
         foo = {
-            servers = {
+            backends = {
                 "127.0.0.1:11214",
             }
         },
         baz = {
-            servers = {
+            backends = {
                 "127.0.0.1:11215",
             }
         }

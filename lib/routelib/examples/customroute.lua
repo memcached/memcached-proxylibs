@@ -15,7 +15,7 @@ function config()
     -- pools not actually used in this example.
     pools{
         foo = {
-            servers = {
+            backends = {
                 "127.0.0.1:11214",
             }
         },

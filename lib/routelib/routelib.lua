@@ -183,7 +183,7 @@ local function make_backend(name, host, o)
         end
 
         if b.host == nil then
-            error("host missing from server entry")
+            error("host missing from backend entry")
         end
     else
         say("making backend for... " .. host)
@@ -224,12 +224,12 @@ local function pools_parse(a)
     local pools = {}
     for name, conf in pairs(a) do
         local popts = conf.options
-        local sopts = conf.server_options
+        local bopts = conf.backend_options
         local s = {}
         -- TODO: some convenience functions for asserting?
-        -- die more gracefully if server list missing
-        for _, server in pairs(conf.servers) do
-            table.insert(s, make_backend(name, server, sopts))
+        -- die more gracefully if backend list missing
+        for _, backend in pairs(conf.backends) do
+            table.insert(s, make_backend(name, backend, sopts))
         end
 
         dsay("making pool:", name, "\n", dump(popts))
