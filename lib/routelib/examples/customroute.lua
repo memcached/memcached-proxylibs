@@ -36,6 +36,15 @@ end
 -- the "_conf()" function is run from the configuration thread
 -- at this point you can grab stats counter ids, or otherwise query global data
 -- or morph passed-in data
+
+-- NOTE: any pools or child functions you intend to use _must_ start with
+-- `child`. examples:
+-- route_myhello{ child_a: "poolfoo", child_b: "poolbar" }
+-- route_myhello{ children: { "foo", "bar" } }
+-- route_myhello{ child_main: "foo", children_failover: { "bar", "baz" } }
+--
+-- anything with the "child" name is pre-processed within routelib to resolve
+-- recursive routes and validate pools.
 function route_myhello_conf(t, ctx)
     -- here we tag the route label onto our message.
     -- in a complex setup, we could use the route label as an index into a
