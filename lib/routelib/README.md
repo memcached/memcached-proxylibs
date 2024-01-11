@@ -32,7 +32,7 @@ function config()
     }
 
     routes{
-        bar = route_direct{
+        bar = route_pool{
             child = { "foo" },
         },
     }
