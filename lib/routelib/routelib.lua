@@ -670,6 +670,10 @@ function route_split_conf(t)
     return { f = "route_split_start", a = t }
 end
 
+function route_direct_conf(t)
+    return { f = "route_direct_start", a = t }
+end
+
 -- register global wrapper functions for collecting user input
 -- give the configuration a type so we can easily pick them out while walking
 -- the route map later.
@@ -828,6 +832,19 @@ function route_split_start(a, ctx)
     o.child_b = fgen:new_handle(ctx:get_child(a.child_b))
     fgen:ready({ a = o, n = ctx:label(), f = route_split_f })
 
+    return fgen
+end
+
+local function route_direct_f(rctx, handle)
+    return function(r)
+        return rctx:enqueue_and_wait(r, handle)
+    end
+end
+
+function route_direct_start(a, ctx)
+    local fgen = mcp.funcgen_new()
+    local handle = fgen:new_handle(a.child)
+    fgen:ready({ a = handle, n = ctx:label(), f = route_direct_f })
     return fgen
 end
 
