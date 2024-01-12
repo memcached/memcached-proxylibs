@@ -882,6 +882,58 @@ end
 -- route_direct end
 --
 
+--
+-- route_allsync start
+--
+
+function route_allsync_conf(t)
+    return { f = "route_allsync_start", a = t }
+end
+
+local function route_allsync_f(rctx, arg)
+    -- just an alias for clarity.
+    local handles = arg
+
+    return function(r)
+        rctx:enqueue(r, handles)
+        rctx:wait_cond(#handles, mcp.WAIT_ANY)
+        local final = nil
+        for x=1, #handles do
+            local res, mode = rctx:result(handles[x])
+            -- got something not okay or good
+            if mode == mcp.RES_ANY then
+                final = res
+                break
+            else
+                final = res
+            end
+        end
+        -- return an error or last result.
+        return final
+    end
+end
+
+function route_allsync_start(a, ctx)
+    dsay("starting an allsync route handler")
+    local fgen = mcp.funcgen_new()
+    local o = {}
+    for _, v in pairs(a.children) do
+        table.insert(o, fgen:new_handle(v))
+    end
+
+    fgen:ready({
+        a = o,
+        n = ctx:label(),
+        f = route_allsync_f,
+    })
+
+    return fgen
+end
+
+--
+-- route_allsync start
+--
+
 register_route_handlers({
     "latest",
     "allfastest",

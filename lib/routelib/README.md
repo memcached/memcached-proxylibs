@@ -164,4 +164,25 @@ main wiki: https://github.com/memcached/memcached/wiki/Proxy
 
 ## Route handler reference
 
-TODO
+### `route_direct`
+
+Routes to a single pool and returns the result without any other logic.
+
+```lua
+route_direct{
+    child = "poolname"
+}
+```
+
+### `route_allsync`
+
+Routes a request to all supplied pools in parallel. Waits for all responses to
+complete and returns the first error seen. If no errors, returns the last
+result.
+
+```lua
+route_allsync{
+    children = { "poola", "poolb", "poolc" }
+}
+```
+
