@@ -720,7 +720,7 @@ end
 -- route_latest start
 --
 
-function route_latest_conf(t, ctx)
+function route_failover_conf(t, ctx)
     if t.stats then
         local name = ctx:label() .. "_retries"
         if t.stats_name then
@@ -731,24 +731,18 @@ function route_latest_conf(t, ctx)
     if t.failover_count == nil then
         t.failover_count = #t.children
     end
-    return { f = "route_latest_start", a = t }
+    return { f = "route_failover_start", a = t }
 end
 
-
-local function route_latest_f(rctx, arg)
+local function route_failover_f(rctx, arg)
     local limit = arg.limit
-    local count = arg.count
     local t = arg.t
+    local miss = arg.miss
 
-    -- example of returning an optimized function based on the requirements of
-    -- the function.
-    -- we could either specialize the generator function returned from
-    -- _start()
-    -- or do it here when the slots are generated.
+
     if arg.stats_id then
         local s = mcp.stat
         local s_id = arg.stats_id
-        dsay("making latest route with a stats counter:" .. s_id)
 
         return function(r)
             local retry = false
@@ -759,7 +753,7 @@ local function route_latest_f(rctx, arg)
                     -- increment the retries counter
                     s(s_id, 1)
                 end
-                if res:ok() then
+                if (miss == true and res:hit()) or (miss == false and res:ok()) then
                     return res
                 end
                 -- only increment the retries counter for an actual retry
@@ -770,12 +764,11 @@ local function route_latest_f(rctx, arg)
             return res
         end
     else
-        dsay("making latest route with no stats")
         return function(r)
             local res = nil
             for i=1, limit do
                 local res = rctx:enqueue_and_wait(r, t[i])
-                if res:ok() then
+                if (miss == true and res:hit()) or (miss == false and res:ok()) then
                     return res
                 end
             end
@@ -786,9 +779,7 @@ local function route_latest_f(rctx, arg)
     end
 end
 
--- randomize the pool list
--- walk one at a time
-function route_latest_start(a, ctx)
+function route_failover_start(a, ctx)
     local fgen = mcp.funcgen_new()
     local o = { t = {}, c = 0 }
     -- NOTE: if given a limit, we don't actually need handles for every pool.
@@ -802,17 +793,19 @@ function route_latest_start(a, ctx)
         o.c = o.c + 1
     end
 
-    -- shuffle the handle list
-    -- TODO: utils section with a shuffle func
-    for i=#o.t, 2, -1 do
-        local j = math.random(i)
-        o.t[i], o.t[j] = o.t[j], o.t[i]
+    if a.shuffle then
+        -- shuffle the handle list
+        for i=#o.t, 2, -1 do
+            local j = math.random(i)
+            o.t[i], o.t[j] = o.t[j], o.t[i]
+        end
     end
 
+    o.miss = a.miss
     o.limit = a.failover_count
     o.stats_id = a.stats_id
 
-    fgen:ready({ a = o, n = ctx:label(), f = route_latest_f })
+    fgen:ready({ a = o, n = ctx:label(), f = route_failover_f })
     return fgen
 end
 
@@ -873,7 +866,7 @@ end
 
 function route_direct_start(a, ctx)
     local fgen = mcp.funcgen_new()
-    local handle = fgen:new_handle(a.child)
+    local handle = fgen:new_handle(ctx:get_child(a.child))
     fgen:ready({ a = handle, n = ctx:label(), f = route_direct_f })
     return fgen
 end
@@ -918,7 +911,7 @@ function route_allsync_start(a, ctx)
     local fgen = mcp.funcgen_new()
     local o = {}
     for _, v in pairs(a.children) do
-        table.insert(o, fgen:new_handle(v))
+        table.insert(o, fgen:new_handle(ctx:get_child(v)))
     end
 
     fgen:ready({
@@ -935,7 +928,8 @@ end
 --
 
 register_route_handlers({
-    "latest",
+    "failover",
     "allfastest",
+    "allsync",
     "split",
 })

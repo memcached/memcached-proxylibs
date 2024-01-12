@@ -21,9 +21,16 @@ function config()
 
     routes{
         map = {
-            bar = route_failover{
-                children = { "foo", "baz" },
-                stats = true,
+            bar = cmdmap{
+                [mcp.CMD_GET] = route_failover{
+                    children = { "foo", "baz" },
+                    stats = true,
+                    miss = true,
+                    shuffle = true,
+                },
+                [mcp.CMD_SET] = route_allsync{
+                    children = { "foo", "baz" },
+                },
             },
         },
     }

@@ -186,3 +186,18 @@ route_allsync{
 }
 ```
 
+### `route_failover`
+
+Takes a list of pools and attempts to run a command in order. Behavior can be
+adjusted by arguments listed below.
+
+```lua
+route_failover{
+    children = { "poola", "poolb", "poolc" },
+    -- randomize the children list once on startup
+    shuffle = true,
+    -- failover if a fetch request was a miss.
+    -- by default we only fail over on error conditions
+    miss = true,
+}
+```
