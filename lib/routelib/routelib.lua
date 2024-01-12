@@ -645,34 +645,7 @@ end
 -- 2) return table with construction information:
 --    - function name (can't use func references since we're crossing VMs!)
 --    - config settings
-function route_allfastest_conf(t)
-    -- TODO: validate arguments here.
-    -- probably good to at least check that all children exist in the pools
-    -- list.
-    return { f = "route_allfastest_start", a = t }
-end
 
-function route_latest_conf(t, ctx)
-    if t.stats then
-        local name = ctx:label() .. "_retries"
-        if t.stats_name then
-            name = t.stats_name .. "_retries"
-        end
-        t.stats_id = stats_get_id(name)
-    end
-    if t.failover_count == nil then
-        t.failover_count = #t.children
-    end
-    return { f = "route_latest_start", a = t }
-end
-
-function route_split_conf(t)
-    return { f = "route_split_start", a = t }
-end
-
-function route_direct_conf(t)
-    return { f = "route_direct_start", a = t }
-end
 
 -- register global wrapper functions for collecting user input
 -- give the configuration a type so we can easily pick them out while walking
@@ -687,9 +660,11 @@ end
 
 --
 -- ---------------------------
--- Worker level Route handlers
+-- Route handler definitions
 -- ---------------------------
 --
+-- _conf() functions executed in config thread
+-- _start() functions executed in worker threads
 
 -- route process:
 -- 1) create funcgen object
@@ -698,6 +673,14 @@ end
 -- the label and, if known, specific sub-command are passed in so they can be
 -- used for log and stats functions
 -- can possibly return a command-specific optimized function
+
+--
+-- route_allfastest start
+--
+
+function route_allfastest_conf(t)
+    return { f = "route_allfastest_start", a = t }
+end
 
 -- so many layers of generation :(
 local function route_allfastest_f(rctx, arg)
@@ -728,6 +711,29 @@ function route_allfastest_start(a, ctx)
     fgen:ready({ a = o, n = ctx:label(), f = route_allfastest_f })
     return fgen
 end
+
+--
+-- route_allfastest end
+--
+
+--
+-- route_latest start
+--
+
+function route_latest_conf(t, ctx)
+    if t.stats then
+        local name = ctx:label() .. "_retries"
+        if t.stats_name then
+            name = t.stats_name .. "_retries"
+        end
+        t.stats_id = stats_get_id(name)
+    end
+    if t.failover_count == nil then
+        t.failover_count = #t.children
+    end
+    return { f = "route_latest_start", a = t }
+end
+
 
 local function route_latest_f(rctx, arg)
     local limit = arg.limit
@@ -810,6 +816,18 @@ function route_latest_start(a, ctx)
     return fgen
 end
 
+--
+-- route_latest end
+--
+
+--
+-- route_split start
+--
+
+function route_split_conf(t)
+    return { f = "route_split_start", a = t }
+end
+
 local function route_split_f(rctx, arg)
     local a = arg.child_a
     local b = arg.child_b
@@ -835,6 +853,18 @@ function route_split_start(a, ctx)
     return fgen
 end
 
+--
+-- route_split end
+--
+
+--
+-- route_direct start
+--
+
+function route_direct_conf(t)
+    return { f = "route_direct_start", a = t }
+end
+
 local function route_direct_f(rctx, handle)
     return function(r)
         return rctx:enqueue_and_wait(r, handle)
@@ -848,7 +878,9 @@ function route_direct_start(a, ctx)
     return fgen
 end
 
--- TODO: failover route
+--
+-- route_direct end
+--
 
 register_route_handlers({
     "latest",
