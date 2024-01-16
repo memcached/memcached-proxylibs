@@ -16,6 +16,14 @@ make
 make test
 ```
 
+You can also use Docker:
+```sh
+# this image expects a "config.lua" to be in the directory
+# you will need to start backend memcached's on your own!
+docker run -v /path/to/config/directory:/config:ro --publish 11211:11211 \
+    dormando/memcached:next-proxy
+```
+
 See the example configurations in: https://github.com/memcached/memcached-proxylibs/tree/main/lib/routelib/examples
 
 Save as `example.lua`:
