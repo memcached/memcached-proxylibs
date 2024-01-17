@@ -41,7 +41,7 @@ function config()
 
     routes{
         bar = route_direct{
-            child = { "foo" },
+            child = "foo",
         },
     }
 end
@@ -202,6 +202,8 @@ adjusted by arguments listed below.
 ```lua
 route_failover{
     children = { "poola", "poolb", "poolc" },
+    -- fail over at most this many times
+    failover_count = number,
     -- randomize the children list once on startup
     shuffle = true,
     -- failover if a fetch request was a miss.
