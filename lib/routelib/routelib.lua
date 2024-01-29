@@ -5,6 +5,8 @@ local STATS_MAX <const> = 1024
 -- same VM they were assigned (pools or routes)
 local CommandMap = {}
 local RouteConf = {}
+local PoolSet = {}
+local BuiltPoolSet = {} -- processed pool set.
 
 local function module_defaults(old)
     local stats = {
@@ -57,7 +59,11 @@ function pools(a)
         print("pools config:")
         print(dump(a))
     end
-    M.c_in.pools = a
+    -- merge the list so pools{} can be called multiple times
+    local p = M.c_in.pools
+    for k, v in pairs(a) do
+        p[k] = v
+    end
 end
 
 function routes(a)
@@ -81,7 +87,7 @@ end
 
 function local_zone(zone)
     dsay(zone)
-    M.c.local_zone = zone
+    M.c_in.local_zone = zone
 end
 
 function verbose(opt)
@@ -115,6 +121,10 @@ function cmdmap(t)
         end
     end
     return setmetatable(t, CommandMap)
+end
+
+function poolset(t)
+    return setmetatable(t, PoolSet)
 end
 
 --
@@ -222,37 +232,53 @@ local function make_backend(name, host, o)
     return mcp.backend(b)
 end
 
+local function pools_make(conf)
+    local popts = {}
+    -- seed global overrides
+    if M.pool_options then
+        for k, v in pairs(M.pool_options) do
+            dsay("pool using global override:", k, v)
+            popts[k] = v
+        end
+    end
+    -- apply local overrides
+    if conf.options then
+        for k, v in pairs(conf.options) do
+            dsay("pool using local override:", k, v)
+            popts[k] = v
+        end
+    end
+
+    local bopts = conf.backend_options
+    local s = {}
+    -- TODO: some convenience functions for asserting?
+    -- die more gracefully if backend list missing
+    for _, backend in pairs(conf.backends) do
+        table.insert(s, make_backend(name, backend, sopts))
+    end
+
+    return mcp.pool(s, popts)
+end
+
 -- converts a table describing pool objects into a new table of real pool
 -- objects.
 local function pools_parse(a)
     local pools = {}
     for name, conf in pairs(a) do
-        local popts = {}
-        -- seed global overrides
-        if M.pool_options then
-            for k, v in pairs(M.pool_options) do
-                dsay("pool using global override:", k, v)
-                popts[k] = v
+        -- Check if conf is a pool set or single pool.
+        -- Add result to top level pools[name] either way.
+        if getmetatable(conf) == PoolSet then
+            dsay("parsing a PoolSet")
+            local pset = {}
+            for sname, sconf in pairs(conf) do
+                dsay("making pool:", sname, "\n", dump(sconf))
+                pset[sname] = pools_make(sconf)
             end
+            pools[name] = setmetatable(pset, BuiltPoolSet)
+        else
+            dsay("making pool:", name, "\n", dump(conf))
+            pools[name] = pools_make(conf)
         end
-        -- apply local overrides
-        if conf.options then
-            for k, v in pairs(conf.options) do
-                dsay("pool using local override:", k, v)
-                popts[k] = v
-            end
-        end
-
-        local bopts = conf.backend_options
-        local s = {}
-        -- TODO: some convenience functions for asserting?
-        -- die more gracefully if backend list missing
-        for _, backend in pairs(conf.backends) do
-            table.insert(s, make_backend(name, backend, sopts))
-        end
-
-        dsay("making pool:", name, "\n", dump(popts))
-        pools[name] = mcp.pool(s, popts)
     end
 
     return pools
@@ -260,16 +286,16 @@ end
 
 -- 1) walk keys looking for child*, recurse if RouteConfs are found
 -- 2) resolve and call route.f
--- NOTE: this could be an actual function reference here...
--- 3) return the response directly. the _conf() function should wrap the next
--- stage itself.
+-- 3) return the response directly. the _conf() function should handle
+-- anything that needs global context in the mcp_config_pools stage.
 local function configure_route(r, ctx)
     local route = r.a
 
     -- first, recurse and resolve any children.
     for k, v in pairs(route) do
         -- try to not accidentally coerce a non-string key into a string!
-        if type(k) == "string" and string.find("^child", k) ~= nil then
+        if type(k) == "string" and string.find(k, "^child") ~= nil then
+            dsay("Checking child for route:", k)
             if type(v) == "table" then
                 if (getmetatable(v) == RouteConf) then
                     route[k] = configure_route(v, ctx)
@@ -280,6 +306,34 @@ local function configure_route(r, ctx)
                             v[ck] = configure_route(cv, ctx)
                         end
                     end
+                end
+            elseif type(v) == "string" then
+                -- TODO: not fully happy with how this is done.
+                -- This is magic-ing a string into a table here, where we make
+                -- extra references to pools.
+                -- The pools are then proxied multiple times when copied
+                -- between the config thread and worker threads:
+                -- - once for the main pool reference.
+                -- - once per route that references the pool set.
+                -- Ideally we need a way to let ctx:get_child() resolve to the
+                -- top level pool reference.
+                -- As-is this doesn't break anything, but it is less
+                -- efficient.
+                dsay("Checking if route has a BuiltPoolSet")
+                -- check if we were asked for a pool set, if so copy it in.
+                local p = ctx:pool(v)
+                if getmetatable(p) == BuiltPoolSet then
+                    dsay("Route has a pool set:", k, dump(p))
+                    -- make a copy table to pass along.
+                    -- this would normally be optional, but people can modify
+                    -- the table during _conf() stage and break things.
+                    -- could use the metatable to lock it down maybe?
+                    local children = {}
+                    for ck, cv in pairs(p) do
+                        children[ck] = cv
+                    end
+                    -- replace the original entry with the table set.
+                    route[k] = children
                 end
             end -- if "table"
         end -- if "child"
@@ -303,7 +357,7 @@ end
 -- routes that have stats should assign stats or global overrides in this conf
 -- stage.
 -- NOTE: we are editing the entries in-place
-local function configure_router(set)
+local function configure_router(set, pools, c_in)
     -- create ctx object to hold label + command
     local ctx = {
         label = function(self)
@@ -312,6 +366,12 @@ local function configure_router(set)
         cmd = function(self)
             return self._cmd
         end,
+        pool = function(self, name)
+            return pools[name]
+        end,
+        local_zone = function(self)
+            return c_in.local_zone
+        end
     }
 
     if set.map then
@@ -358,7 +418,9 @@ end
 -- by default we just do CMD_ANY_STORAGE
 -- NOTE: this function should be used for vadliating/preparsing the router
 -- config and routes sections.
-local function routes_parse(routes, pools)
+local function routes_parse(c_in, pools)
+    local routes = c_in.routes
+
     for tag, set in pairs(routes) do
         if set.map and set.cmap then
             error("cannot set both map and cmap for a router")
@@ -368,7 +430,7 @@ local function routes_parse(routes, pools)
             error("must pass map or cmap to a router")
         end
 
-        configure_router(set)
+        configure_router(set, pools, c_in)
     end
 
     return { r = routes, p = pools }
@@ -424,7 +486,7 @@ end
 -- 3) this is probably improvable in the future once all the pre-API2 code is
 -- dropped and we can attach stats ID's to rctx's and do this
 -- recycling work internally in the proxy.
-function stats_turnover()
+local function stats_turnover()
     local st = M.stats
 
     if st.old_map then
@@ -461,7 +523,6 @@ end
 -- NOTE: we do an unfortunate duck typing of a map entry, as metatables can't
 -- cross the cross-VM barrier so we can't type the route handlers. Map entries
 -- can have sub-maps and they'll both just look like tables.
--- TODO: support top level command only maps
 local function make_router(set, pools)
     local map = {}
     dsay("making a new router")
@@ -478,8 +539,11 @@ local function make_router(set, pools)
                 return pools[child]
             elseif type(child) == "table" then
                 return make_route(child, self)
+            elseif type(child) == "userdata" then
+                -- already a pool proxy.
+                return child
             else
-                error("invalid child given to route handler")
+                error("invalid child given to route handler: " .. type(child))
             end
         end
     }
@@ -556,6 +620,7 @@ end
 
 function mcp_config_pools()
     dsay("mcp_config_pools: start")
+    -- call the global defined in our user's main config file.
     config()
     -- create all necessary pool objects and prepare the configuration for
     -- passing on to workers
@@ -567,7 +632,7 @@ function mcp_config_pools()
     -- Step 1) create pool objects
     local pools = pools_parse(M.c_in.pools)
     -- Step 2) prepare router descriptions
-    local conf = routes_parse(M.c_in.routes, pools)
+    local conf = routes_parse(M.c_in, pools)
     -- Step 3) Reset global configuration
     dsay("mcp_config_pools: done")
     stats_turnover()
@@ -924,7 +989,110 @@ function route_allsync_start(a, ctx)
 end
 
 --
--- route_allsync start
+-- route_allsync end
+--
+
+--
+-- route_zfailover start
+--
+
+function route_zfailover_conf(t, ctx)
+    if t.stats then
+        local name = ctx:label() .. "_retries"
+        if t.stats_name then
+            name = t.stats_name .. "_retries"
+        end
+        t.stats_id = stats_get_id(name)
+    end
+    if t.failover_count == nil then
+        t.failover_count = #t.children
+    end
+
+    -- Since we're a "zone minded" route handler, we check for a globally
+    -- configured zone.
+    if t.local_zone == nil then
+        t.local_zone = ctx:local_zone()
+    end
+
+    if t.local_zone == nil then
+        error("route_zfailover must have a local_zone defined")
+    end
+
+    return { f = "route_zfailover_start", a = t }
+end
+
+local function route_zfailover_f(rctx, arg)
+    local limit = arg.limit
+    local t = arg.t
+    local miss = arg.miss
+    local s_id = arg.stats_id
+    local s = mcp.stat
+
+    -- first, find out local child
+    local near = t[arg.local_zone]
+    -- now, gather our non-local-zones
+    local far = {}
+    local farcount = 0
+    for k, v in pairs(t) do
+        if k ~= arg.local_zone then
+            table.insert(far, v)
+            farcount = farcount + 1
+        end
+    end
+    local mode = mcp.WAIT_FASTGOOD
+
+    return function(r)
+        local res = rctx:enqueue_and_wait(r, near)
+        if res:hit() or (miss == false and res:ok()) then
+            return res
+        end
+
+        if stat then
+            s(s_id, 1)
+        end
+        -- didn't get what we want to begin with, fan out.
+        rctx:enqueue(r, far)
+        rctx:wait_cond(farcount, mode)
+
+        -- look for a good result, else any OK, else any result.
+        local final = nil
+        for x=1, #far do
+            local res, tag = rctx:result(far[x])
+            if tag == mcp.RES_GOOD then
+                return res
+            elseif tag == mcp.RES_OK then
+                final = res
+            elseif final ~= nil then
+                final = res
+            end
+        end
+        return final
+    end
+end
+
+function route_zfailover_start(a, ctx)
+    local fgen = mcp.funcgen_new()
+    local o = { t = {}, c = 0 }
+
+    -- our list of children is actually a map, so we build this differently
+    -- than the failover route.
+    for k, child in pairs(a.children) do
+        local c = ctx:get_child(child)
+        o.t[k] = fgen:new_handle(c)
+        o.c = o.c + 1
+    end
+
+    o.miss = a.miss
+    o.limit = a.failover_count
+    o.stats_id = a.stats_id
+    o.local_zone = a.local_zone
+
+    fgen:ready({ a = o, n = ctx:label(), f = route_zfailover_f })
+    return fgen
+end
+
+--
+-- route_zfailover end
 --
 
 register_route_handlers({
@@ -932,4 +1100,5 @@ register_route_handlers({
     "allfastest",
     "allsync",
     "split",
+    "zfailover",
 })
