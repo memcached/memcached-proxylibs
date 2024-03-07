@@ -38,4 +38,15 @@ function TestBasics:testStats()
     lu.assertNotNil(stats["cmd_mg"], 'stats proxy also works')
 end
 
+function TestBasics:testMS()
+    p:c_send("ms one/boo 2\r\nhi\r\n")
+    -- this also works
+    --p:c_send("ms one/boo 2\r\n")
+    --p:c_send("hi\r\n")
+    p:be_recv(1, "ms one/boo 2\r\n")
+    p:be_recv(1, "hi\r\n")
+    p:be_send(1, "HD\r\n")
+    p:c_recv_be()
+end
+
 runTests()
