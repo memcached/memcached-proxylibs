@@ -1,6 +1,7 @@
 -- TODO: rename ps to un
 local ps = require('posix.unistd')
 local sk = require('posix.sys.socket')
+local wa = require('posix.sys.wait')
 local sg = require('posix.signal')
 local ti = require('posix.time')
 local poll = require('posix.poll')
@@ -14,16 +15,20 @@ local unixcount = 0
 local S = {}
 S.__index = S
 
+function S:__gc()
+    self:close()
+end
+
 function S:new(fd)
     return setmetatable({ sock = fd }, S)
 end
 
 function S:close()
-    ps.close(self.fd)
+    ps.close(self.sock)
 end
 
 function S:getfd()
-    return self.fd
+    return self.sock
 end
 
 function S:send(msg)
@@ -120,6 +125,10 @@ end
 local H = {}
 H.__index = H
 
+function H:__gc()
+    self:cleanup()
+end
+
 function H:new(o)
     -- wrap the fd with a conn object
     o.conn = S:new(o.conn)
@@ -127,7 +136,7 @@ function H:new(o)
 end
 
 function H:stop()
-    sg.kill(self.pid, 2)
+    sg.kill(self.pid, sg.SIGINT)
 end
 
 function H:reload()
@@ -135,9 +144,28 @@ function H:reload()
 end
 
 function H:cleanup()
-    sg.kill(self.pid, 2)
     if self.domainsocket then
         os.remove(self.domainsocket)
+    end
+
+    sg.kill(self.pid, sg.SIGINT)
+
+    -- ensure the daemon is stopped
+    local stopped = false
+    for x=1, 50, 1 do
+        local res, state = wa.wait(self.pid, wa.WNOHANG)
+        if res == self.pid then
+            stopped = true
+            break
+        elseif res == nil then
+            error("failed to stop memcached: " .. tostring(self.pid))
+        end
+        ti.nanosleep({tv_sec = 0, tv_nsec = 200000000})
+    end
+
+    if not stopped then
+        print("WARNING: memcached did not stop. sending SIGKILL and giving up")
+        sg.kill(self.pid, sg.SIGKILL)
     end
 end
 
@@ -169,7 +197,7 @@ M.new_memcached = function(args)
     local mc_path = os.getenv("MC_PATH")
     local pid = ps.getpid()
 
-    local sockfile = "/tmp/memcached." .. pid .. "." .. unixcount
+    local sockfile = "/tmp/memcachetest." .. pid .. "." .. unixcount
     unixcount = unixcount + 1
 
     args = args .. " -s " .. sockfile
@@ -188,7 +216,7 @@ M.new_memcached = function(args)
         if childpid == 0 then
             -- child
             local a = {}
-            print("ARGS: " .. args)
+            --print("ARGS: " .. args)
             for tok in string.gmatch(args, "%S+") do
                 table.insert(a, tok)
             end
@@ -242,6 +270,28 @@ local function _mock_server(port)
     sk.listen(fd, 1024)
 
     return fd
+end
+
+function PT:__gc()
+    self:cleanup()
+end
+
+function PT:cleanup()
+    -- close servers first, so proxy can't reconnect
+    if self._srv then
+        for _, srv in pairs(self._srv) do
+            ps.close(srv)
+        end
+        self._srv = nil
+    end
+
+    -- be objects have their own GC, but we can close them here.
+    if self._be then
+        for _, be in pairs(self._be) do
+            be:close()
+        end
+        self._be = nil
+    end
 end
 
 function PT:new(o)

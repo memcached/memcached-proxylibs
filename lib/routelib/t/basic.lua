@@ -17,8 +17,9 @@ function runTests()
     p:accept_backends()
 
     local res = lu.LuaUnit.run()
-    srv:cleanup()
-    os.exit(res)
+    -- The second 'true' here is important. It lets the test harness clean up
+    -- before exiting.
+    os.exit(res, true)
 end
 
 TestBasics = {}
