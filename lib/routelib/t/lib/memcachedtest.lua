@@ -7,9 +7,23 @@ local ti = require('posix.time')
 local poll = require('posix.poll')
 
 local READ_SIZE <const> = 16384
+local READ_TIMEOUT <const> = 1000 -- 1s is plenty
 
 local M = {}
 local unixcount = 0
+
+local function _poll_read_one(fd, timeout)
+    local fds = {
+        [fd] = {events={IN=true}},
+    }
+    local ready = poll.poll(fds, timeout)
+
+    if ready and fds[fd].revents and fds[fd].revents.IN then
+        return true
+    else
+        return false
+    end
+end
 
 -- connection object
 local S = {}
@@ -39,6 +53,11 @@ function S:send(msg)
     return res
 end
 
+-- wait up to timeout milliseconds for socket to become readable
+function S:poll_read(timeout)
+    return _poll_read_one(self:getfd(), timeout)
+end
+
 -- NOTE: tests have a general limitation of only being able to deal with
 -- non-binary values. this has always been true for memcached tests. This is
 -- fine since values are opaque and thus we don't need to test them.
@@ -59,9 +78,17 @@ function S:read(msg)
         -- typically runs small commands so it might not be worth making this
         -- more complex.
         if not i then
+            local readable = self:poll_read(READ_TIMEOUT)
+            if not readable then
+                error("failed to read from socket: timeout")
+            end
             local bytes, err, errno = sk.recv(self.sock, READ_SIZE)
             if bytes == nil then
                 error("failed to read from socket: " .. err)
+            end
+
+            if string.len(bytes) == 0 then
+                error("remote socket is closed")
             end
 
             if self.buf then
@@ -311,6 +338,10 @@ function PT:new(o)
 end
 
 local function _accept_backend(l)
+    local ready = _poll_read_one(l, READ_TIMEOUT)
+    if not ready then
+        error("Failed to accept new connection on backend socket: timeout")
+    end
     local fd, err, errno = sk.accept(l)
     if fd == nil then
         error("Failed to accept new connection on backend socket: " .. err)
@@ -360,17 +391,7 @@ end
 
 -- wait up to timeout milliseconds for the client to become readable.
 function PT:wait_c(timeout)
-    local fd = self._c:getfd()
-    local fds = {
-        [fd] = {events={IN=true}},
-    }
-    poll(fds, timeout)
-
-    if fds[fd].revents.IN then
-        return true
-    else
-        return false
-    end
+    return self._c:poll_read(timeout)
 end
 
 -- Remember the last thing sent from a client to the proxy
