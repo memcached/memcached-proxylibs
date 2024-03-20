@@ -12,6 +12,13 @@ function runTests()
     p = t.new_proxytest({ lu = lu, servers = {11512, 11513} })
 
     srv = t.new_memcached("-o proxy_config=./t/basic-config.lua -t 1")
+    -- example of starting the daemon with -l overridden.
+    -- instead of trying to magically parse what to connect to, you also pass
+    -- in the host and port in case of multiple -l's being used.
+    --srv = t.new_memcached("-o proxy_config=./t/basic-config.lua -t 1 -l 127.0.0.1:11211", "127.0.0.1", 11211)
+    -- this creates a wrapped connection to a specific port. used when testing
+    -- memcached from different ports.
+    -- local cli = t.new_handle("127.0.0.1", "11211")
     sock = srv:sock()
     p:set_c(sock)
     p:accept_backends()

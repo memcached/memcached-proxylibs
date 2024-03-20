@@ -148,6 +148,17 @@ function S:mem_stats(cmd)
     return s
 end
 
+M.new_handle = function(host, port)
+    fd = sk.socket(sk.AF_INET, sk.SOCK_STREAM, 0)
+    local res, err, errno = sk.connect(fd, {family = sk.AF_INET, addr=host, port=port})
+
+    if res == nil then
+        error("failed to connect: " .. self.host .. ":" .. tostring(self.port) .. " :" .. err)
+    end
+
+    return S:new(fd)
+end
+
 -- memcached serer handler object
 local H = {}
 H.__index = H
@@ -201,12 +212,20 @@ function H:sock()
 end
 
 function H:new_sock()
-    local fd = sk.socket(sk.AF_UNIX, sk.SOCK_STREAM, 0)
+    if self.domainsocket then
+        local fd = sk.socket(sk.AF_UNIX, sk.SOCK_STREAM, 0)
+        local res, err, errno = sk.connect(fd, {family = sk.AF_UNIX, path = self.domainsocket})
 
-    local res, err, errno = sk.connect(fd, {family = sk.AF_UNIX, path = self.domainsocket})
+        if res == nil then
+            error("failed to connect to memcached: " .. self.domainsocket .. " :" .. err)
+        end
+    else
+        fd = sk.socket(sk.AF_INET, sk.SOCK_STREAM, 0)
+        local res, err, errno = sk.connect(fd, {family = sk.AF_INET, addr=self.host, port=self.port})
 
-    if res == nil then
-        error("failed to connect to memcached: " .. self.domainsocket .. " :" .. err)
+        if res == nil then
+            error("failed to connect to memcached: " .. self.host .. ":" .. tostring(self.port) .. " :" .. err)
+        end
     end
     return S:new(fd)
 end
@@ -219,14 +238,19 @@ end
 -- network sockets or supplied unix sockets
 -- keeping it as simple as possible for the first pass, since we're just doing
 -- this for route library tests and not "core memcached intregation tests"
-M.new_memcached = function(args)
+M.new_memcached = function(args, host, port)
     local use_external = os.getenv("TEST_EXTERNAL")
     local mc_path = os.getenv("MC_PATH")
     local pid = ps.getpid()
 
-    local sockfile = "/tmp/memcachetest." .. pid .. "." .. unixcount
-    unixcount = unixcount + 1
-
+    local sockfile = nil
+    if string.find(args, "-l ", 1, true) then
+        assert(host, "must pass host if starting memcached with -l")
+        assert(port, "must pass port if starting memcached with -l")
+    else
+        sockfile = "/tmp/memcachetest." .. pid .. "." .. unixcount
+        unixcount = unixcount + 1
+    end
 
     -- If use_external:
     -- Don't fork, but print the command and start trying to connect to
@@ -235,15 +259,18 @@ M.new_memcached = function(args)
     if use_external then
         -- override the sockfile to not use the pid so you can repeat the test
         -- without changing gdb's run arguments.
-        sockfile = "/tmp/memcachetest." .. use_external .. "." .. unixcount
-        args = args .. " -s " .. sockfile
+        if sockfile then
+            sockfile = "/tmp/memcachetest." .. use_external .. "." .. unixcount
+            args = args .. " -s " .. sockfile
+        end
         print("EXTERNAL memcached requested. Start arguments:\n",
             mc_path .. "/memcached-debug " .. args)
-
     else
         -- TODO: try to find memcached binary in more ways
         childpid = ps.fork()
-        args = args .. " -s " .. sockfile
+        if sockfile then
+            args = args .. " -s " .. sockfile
+        end
 
         if childpid == 0 then
             -- child
@@ -259,14 +286,23 @@ M.new_memcached = function(args)
 
     if childpid or use_external then
         -- parent
-        local fd = sk.socket(sk.AF_UNIX, sk.SOCK_STREAM, 0)
+        local fd
+        if sockfile then
+            fd = sk.socket(sk.AF_UNIX, sk.SOCK_STREAM, 0)
+        else
+            fd = sk.socket(sk.AF_INET, sk.SOCK_STREAM, 0)
+        end
         local connected = false
         -- was originally a 0.25s loop for 99 tries.
         -- instead doing a backoff so we can start with faster first try.
         local nsec_per_ms <const> = 1000000
         for x=nsec_per_ms * 10, nsec_per_ms * 800, nsec_per_ms * 10 do
             -- TODO: restructure to not eat connect error
-            if sk.connect(fd, {family = sk.AF_UNIX, path = sockfile}) then
+            if sockfile and sk.connect(fd, {family = sk.AF_UNIX, path = sockfile}) then
+                connected = true
+                break
+            end
+            if not sockfile and sk.connect(fd, {family = sk.AF_INET, addr=host, port=port}) then
                 connected = true
                 break
             end
@@ -278,7 +314,7 @@ M.new_memcached = function(args)
         end
 
         -- return server handle object
-        return H:new({ pid = childpid, domainsocket = sockfile, conn = fd })
+        return H:new({ pid = childpid, domainsocket = sockfile, host = host, port = port, conn = fd })
     end
 end
 
