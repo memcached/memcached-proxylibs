@@ -227,18 +227,23 @@ M.new_memcached = function(args)
     local sockfile = "/tmp/memcachetest." .. pid .. "." .. unixcount
     unixcount = unixcount + 1
 
-    args = args .. " -s " .. sockfile
 
     -- If use_external:
     -- Don't fork, but print the command and start trying to connect to
     -- sockfile in a loop.
     local childpid = false
     if use_external then
+        -- override the sockfile to not use the pid so you can repeat the test
+        -- without changing gdb's run arguments.
+        sockfile = "/tmp/memcachetest." .. use_external .. "." .. unixcount
+        args = args .. " -s " .. sockfile
         print("EXTERNAL memcached requested. Start arguments:\n",
             mc_path .. "/memcached-debug " .. args)
+
     else
         -- TODO: try to find memcached binary in more ways
         childpid = ps.fork()
+        args = args .. " -s " .. sockfile
 
         if childpid == 0 then
             -- child
@@ -249,7 +254,6 @@ M.new_memcached = function(args)
             end
             -- TODO: check error
             ps.exec(mc_path .. "/memcached-debug", a)
-
         end
     end
 
