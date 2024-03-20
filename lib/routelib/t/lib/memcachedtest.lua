@@ -212,8 +212,9 @@ function H:sock()
 end
 
 function H:new_sock()
+    local fd = nil
     if self.domainsocket then
-        local fd = sk.socket(sk.AF_UNIX, sk.SOCK_STREAM, 0)
+        fd = sk.socket(sk.AF_UNIX, sk.SOCK_STREAM, 0)
         local res, err, errno = sk.connect(fd, {family = sk.AF_UNIX, path = self.domainsocket})
 
         if res == nil then
