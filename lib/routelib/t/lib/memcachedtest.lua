@@ -25,6 +25,28 @@ local function _poll_read_one(fd, timeout)
     end
 end
 
+-- fdlist is fd = v and we ignore the v for convenience.
+-- if it's less convenient in the future it can change :P
+local function _poll_read_n(fdlist, timeout)
+    local fds = {}
+    for fd, _ in ipairs(fdlist) do
+        fds[fd] = {events={IN=true}}
+    end
+    local ready = poll.poll(fds, timeout)
+
+    if ready then
+        local res = {}
+        for fd, v in ipairs(fds) do
+            if v.revents and v.revents.IN then
+                table.insert(res, fd)
+            end
+        end
+        return res
+    else
+        return nil
+    end
+end
+
 -- connection object
 local S = {}
 S.__index = S
@@ -502,6 +524,38 @@ function PT:be_send(list, cmd)
     for k, v in ipairs(l) do
         v:send(cmd)
     end
+end
+
+function PT:be_wait(list, timeout)
+    local l = self:_be_list(list)
+    local fdmap = {}
+    for k, v in ipairs(l) do
+        fdmap[v:getfd()] = k
+    end
+
+    local res = _poll_read_n(fdmap, timeout)
+    if res then
+        local rbes = {}
+        for _, fd in pairs(res) do
+            table.insert(rbes, fdmap[fd])
+        end
+        return rbes
+    else
+        return res
+    end
+end
+
+-- check if a be we got back from be_wait() is the be at this specific index.
+function PT:be_is(idx, be)
+    if self._be[idx] == be then
+        return true
+    else
+        return false
+    end
+end
+
+function PT:be_wait_one(idx, timeout)
+    return _poll_read_one(self._be[idx]:getfd(), timeout)
 end
 
 -- Check that client receives the last command sent to any backend. This is a

@@ -31,8 +31,20 @@ end
 
 TestBasics = {}
 
+-- untested API:
+-- local bes = p:be_wait(list, timeout)
+-- if bes == nil then
+--   -- none became readable
+-- end
+-- else #bes is the number of readable backends
+-- loop through bes and compare via p:be_is(index, value) to see if a backend
+-- was originally in index 1, 2, etc. ie; reader or writer or copy.
+-- might change this to return the original indexes directly?
+
 function TestBasics:testBasics()
     p:c_send("mg one/foo\r\n")
+    -- example: waiting if a specific backend becomes available or not
+    --lu.assertEquals(p:be_wait_one(1, 500), true)
     p:be_recv_c(1, "backend one received mg")
     p:be_send(1, "EN\r\n")
     p:c_recv_be("client received response from backend")
