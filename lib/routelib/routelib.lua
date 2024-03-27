@@ -5,7 +5,6 @@ local STATS_MAX <const> = 1024
 -- same VM they were assigned (pools or routes)
 local CommandMap = {}
 local RouteConf = {}
-local PoolSet = {}
 local BuiltPoolSet = {} -- processed pool set.
 
 local function module_defaults(old)
@@ -123,13 +122,18 @@ function cmdmap(t)
     return setmetatable(t, CommandMap)
 end
 
-function poolset(t)
-    return setmetatable(t, PoolSet)
-end
-
 --
 -- User/Pool configuration thread functions
 --
+
+-- TODO: this wrapper func will allow for loading json vs lua or special error
+-- handling. Presently it does little.
+local function load_userconfig(file)
+    if file == nil then
+        error("must provide config file via -o proxy_arg")
+    end
+    dofile(file)
+end
 
 -- TODO: remember values and add to verbose print if changed on reload
 local function settings_parse(a)
@@ -267,7 +271,7 @@ local function pools_parse(a)
     for name, conf in pairs(a) do
         -- Check if conf is a pool set or single pool.
         -- Add result to top level pools[name] either way.
-        if getmetatable(conf) == PoolSet then
+        if string.find(name, "^set_") ~= nil then
             dsay("parsing a PoolSet")
             local pset = {}
             for sname, sconf in pairs(conf) do
@@ -291,6 +295,11 @@ end
 local function configure_route(r, ctx)
     local route = r.a
 
+    -- TODO: think we can take the built pools list and actually validate here
+    -- that the children all index properly.
+    -- this would ensure errors happen during the config stage instead of the
+    -- worker load stage.
+
     -- first, recurse and resolve any children.
     for k, v in pairs(route) do
         -- try to not accidentally coerce a non-string key into a string!
@@ -307,44 +316,17 @@ local function configure_route(r, ctx)
                         end
                     end
                 end
-            elseif type(v) == "string" then
-                -- TODO: not fully happy with how this is done.
-                -- This is magic-ing a string into a table here, where we make
-                -- extra references to pools.
-                -- The pools are then proxied multiple times when copied
-                -- between the config thread and worker threads:
-                -- - once for the main pool reference.
-                -- - once per route that references the pool set.
-                -- Ideally we need a way to let ctx:get_child() resolve to the
-                -- top level pool reference.
-                -- As-is this doesn't break anything, but it is less
-                -- efficient.
-                dsay("Checking if route has a BuiltPoolSet")
-                -- check if we were asked for a pool set, if so copy it in.
-                local p = ctx:pool(v)
-                if getmetatable(p) == BuiltPoolSet then
-                    dsay("Route has a pool set:", k, dump(p))
-                    -- make a copy table to pass along.
-                    -- this would normally be optional, but people can modify
-                    -- the table during _conf() stage and break things.
-                    -- could use the metatable to lock it down maybe?
-                    local children = {}
-                    for ck, cv in pairs(p) do
-                        children[ck] = cv
-                    end
-                    -- replace the original entry with the table set.
-                    route[k] = children
-                end
             end -- if "table"
         end -- if "child"
     end -- for(route)
 
-    local f = _G[r.f]
+    local f = _G["route_" .. r.f .. "_conf"]
     local ret = f(route, ctx)
     if ret == nil then
         error("route configure function failed to return anything: " .. r.f)
     end
-    return ret
+    -- decorate the response with something that can be duck-typed cross-VM.
+    return { f = r.f, _rlib_route = true, a = ret }
 end
 
 -- 1) walk the tree
@@ -509,8 +491,34 @@ end
 -- thread.
 local function make_route(arg, ctx)
     dsay("generating a route:", ctx:label(), ctx:cmd())
+    -- walk the passed arg table for any children to process.
+    for k, v in pairs(arg.a) do
+        if type(k) == "string" and string.find(k, "^child") ~= nil then
+            if type(v) == "table" then
+                if v._rlib_route then
+                    arg.a[k] = make_route(v, ctx)
+                else
+                    -- child = { route{}, "bar"}
+                    -- child = { foo = bar, baz = route{} }
+                    -- walk _this_ table looking for routes
+                    for ck, cv in pairs(v) do
+                        -- TODO: else if table throw error?
+                        -- should limit child recursion.
+                        if type(cv) == "table" and cv.rlib_route then
+                            v[ck] = make_route(cv, ctx)
+                        elseif type(cv) == "string" then
+                            v[ck] = ctx:get_child(cv)
+                        end
+                    end -- for child table do
+                end -- if _rlib_route
+            elseif type(v) == "string" then
+                arg.a[k] = ctx:get_child(v)
+            end -- if "table"
+        end
+    end
+
     -- resolve the named function to a real function from global
-    local f = _G[arg.f]
+    local f = _G["route_" .. arg.f .. "_start"]
     -- create and return the funcgen object
     return f(arg.a, ctx)
 end
@@ -534,17 +542,46 @@ local function make_router(set, pools)
         cmd = function(self)
             return self._cmd
         end,
+        -- TODO: while we check and throw errors here, we should instead
+        -- prefer to check this stuff on the mcp_config_pools side to avoid
+        -- throwing unrecoverable errors.
         get_child = function(self, child)
-            if type(child) == "string" then
-                return pools[child]
-            elseif type(child) == "table" then
-                return make_route(child, self)
-            elseif type(child) == "userdata" then
-                -- already a pool proxy.
-                return child
-            else
+            if type(child) ~= "string" then
                 error("invalid child given to route handler: " .. type(child))
             end
+
+            -- if "^set_words_etc" then special parse
+            -- if "^set_" then special parse
+            -- else match against pools directly
+            local set, name = string.match(child, "^(set_%w+)_(.+)")
+            if set and name then
+                if pools[set] == nil then
+                    error("no pool set matching: " .. set)
+                end
+                if pools[set][name] == nil then
+                    error("no pool set zone matching: " .. child)
+                end
+                -- querying within a pool set
+                return pools[set][name]
+            end
+
+            -- still starts with set_, so we want to copy out that table.
+            if string.find(child, "^set_") ~= nil then
+                if pools[child] == nil then
+                    error("no pool set matching: " .. child)
+                end
+                local t = {}
+                for k, v in pairs(pools[child]) do
+                    t[k] = v
+                end
+                return t
+            end
+
+            -- else we're directly querying a pool.
+            if pools[child] == nil then
+                error("no pool matching: " .. child)
+            end
+            return pools[child]
         end
     }
 
@@ -620,8 +657,7 @@ end
 
 function mcp_config_pools()
     dsay("mcp_config_pools: start")
-    -- call the global defined in our user's main config file.
-    config()
+    load_userconfig(mcp.start_arg)
     -- create all necessary pool objects and prepare the configuration for
     -- passing on to workers
     -- Step 0) update global settings if requested
@@ -718,7 +754,7 @@ end
 function register_route_handlers(t)
     for _, name in pairs(t) do
         _G["route_" .. name] = function(t)
-            return setmetatable({ f = "route_" .. name .. "_conf", a = t }, RouteConf)
+            return setmetatable({ f = name, a = t }, RouteConf)
         end
     end
 end
@@ -744,7 +780,7 @@ end
 --
 
 function route_allfastest_conf(t)
-    return { f = "route_allfastest_start", a = t }
+    return t
 end
 
 -- so many layers of generation :(
@@ -769,8 +805,7 @@ function route_allfastest_start(a, ctx)
     dsay("starting an allfastest handler")
     local o = {}
     for _, child in pairs(a.children) do
-        local c = ctx:get_child(child)
-        table.insert(o, fgen:new_handle(c))
+        table.insert(o, fgen:new_handle(child))
     end
 
     fgen:ready({ a = o, n = ctx:label(), f = route_allfastest_f })
@@ -796,7 +831,7 @@ function route_failover_conf(t, ctx)
     if t.failover_count == nil then
         t.failover_count = #t.children
     end
-    return { f = "route_failover_start", a = t }
+    return t
 end
 
 local function route_failover_f(rctx, arg)
@@ -853,8 +888,7 @@ function route_failover_start(a, ctx)
     -- Not doing this _right now_ because I'm not confident children is an
     -- array or not.
     for _, child in pairs(a.children) do
-        local c = ctx:get_child(child)
-        table.insert(o.t, fgen:new_handle(c))
+        table.insert(o.t, fgen:new_handle(child))
         o.c = o.c + 1
     end
 
@@ -883,7 +917,7 @@ end
 --
 
 function route_split_conf(t)
-    return { f = "route_split_start", a = t }
+    return t
 end
 
 local function route_split_f(rctx, arg)
@@ -904,8 +938,8 @@ function route_split_start(a, ctx)
     local fgen = mcp.funcgen_new()
     local o = {}
     dsay("starting a split route handler")
-    o.child_a = fgen:new_handle(ctx:get_child(a.child_a))
-    o.child_b = fgen:new_handle(ctx:get_child(a.child_b))
+    o.child_a = fgen:new_handle(a.child_a)
+    o.child_b = fgen:new_handle(a.child_b)
     fgen:ready({ a = o, n = ctx:label(), f = route_split_f })
 
     return fgen
@@ -920,7 +954,7 @@ end
 --
 
 function route_direct_conf(t)
-    return { f = "route_direct_start", a = t }
+    return t
 end
 
 local function route_direct_f(rctx, handle)
@@ -931,7 +965,7 @@ end
 
 function route_direct_start(a, ctx)
     local fgen = mcp.funcgen_new()
-    local handle = fgen:new_handle(ctx:get_child(a.child))
+    local handle = fgen:new_handle(a.child)
     fgen:ready({ a = handle, n = ctx:label(), f = route_direct_f })
     return fgen
 end
@@ -945,7 +979,7 @@ end
 --
 
 function route_allsync_conf(t)
-    return { f = "route_allsync_start", a = t }
+    return t
 end
 
 local function route_allsync_f(rctx, arg)
@@ -976,7 +1010,7 @@ function route_allsync_start(a, ctx)
     local fgen = mcp.funcgen_new()
     local o = {}
     for _, v in pairs(a.children) do
-        table.insert(o, fgen:new_handle(ctx:get_child(v)))
+        table.insert(o, fgen:new_handle(v))
     end
 
     fgen:ready({
@@ -1018,7 +1052,7 @@ function route_zfailover_conf(t, ctx)
         error("route_zfailover must have a local_zone defined")
     end
 
-    return { f = "route_zfailover_start", a = t }
+    return t
 end
 
 local function route_zfailover_f(rctx, arg)
@@ -1077,8 +1111,7 @@ function route_zfailover_start(a, ctx)
     -- our list of children is actually a map, so we build this differently
     -- than the failover route.
     for k, child in pairs(a.children) do
-        local c = ctx:get_child(child)
-        o.t[k] = fgen:new_handle(c)
+        o.t[k] = fgen:new_handle(child)
         o.c = o.c + 1
     end
 
@@ -1100,5 +1133,6 @@ register_route_handlers({
     "allfastest",
     "allsync",
     "split",
+    "direct",
     "zfailover",
 })

@@ -1,3 +1,7 @@
+-- The intent of this test file is _not_ to test routelib, but to stand as an
+-- example for how to use t/lib/memcachedtest, and a file for "testing the
+-- test framework" without routelib complicating things.
+
 local lu = require('luaunit')
 local t = require("t/lib/memcachedtest")
 
