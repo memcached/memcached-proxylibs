@@ -7,7 +7,7 @@ For more information on the proxy: https://github.com/memcached/memcached/wiki/P
 
 ## Quick Start
 
-Make sure memcached is built with the proxy. As of this writing version 1.6.23
+Make sure memcached is built with the proxy. As of this writing version 1.6.26
 or newer is required.
 
 ```sh
