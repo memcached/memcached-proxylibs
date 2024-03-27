@@ -1,38 +1,33 @@
-package.loaded["routelib"] = nil
-local s = require("routelib")
 verbose(true)
 debug(true)
 
 -- we configure route_failover to track itself with a stats counter, accessable
 -- via "stats proxy" under user_* fields.
-function config()
-    pools{
-        foo = {
-            backends = {
-                "127.0.0.1:11214",
-            }
-        },
-        baz = {
-            backends = {
-                "127.0.0.1:11215",
-            }
+pools{
+    foo = {
+        backends = {
+            "127.0.0.1:11214",
+        }
+    },
+    baz = {
+        backends = {
+            "127.0.0.1:11215",
         }
     }
+}
 
-    routes{
-        map = {
-            bar = cmdmap{
-                [mcp.CMD_GET] = route_failover{
-                    children = { "foo", "baz" },
-                    stats = true,
-                    miss = true,
-                    shuffle = true,
-                },
-                [mcp.CMD_SET] = route_allsync{
-                    children = { "foo", "baz" },
-                },
+routes{
+    map = {
+        bar = cmdmap{
+            [mcp.CMD_GET] = route_failover{
+                children = { "foo", "baz" },
+                stats = true,
+                miss = true,
+                shuffle = true,
+            },
+            [mcp.CMD_SET] = route_allsync{
+                children = { "foo", "baz" },
             },
         },
-    }
-end
-
+    },
+}
