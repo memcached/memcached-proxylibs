@@ -353,6 +353,9 @@ local function configure_router(set, pools, c_in)
         end,
         local_zone = function(self)
             return c_in.local_zone
+        end,
+        get_stats_id = function(self, name)
+            return stats_get_id(name)
         end
     }
 
@@ -419,7 +422,7 @@ local function routes_parse(c_in, pools)
 end
 
 -- route*() config functions can call this to get ids to use for stats counters
-function stats_get_id(name)
+local function stats_get_id(name)
     local st = M.stats
 
     -- already have an ID for this stat name.
@@ -826,7 +829,7 @@ function route_failover_conf(t, ctx)
         if t.stats_name then
             name = t.stats_name .. "_retries"
         end
-        t.stats_id = stats_get_id(name)
+        t.stats_id = ctx:stats_get_id(name)
     end
     if t.failover_count == nil then
         t.failover_count = #t.children
@@ -1036,7 +1039,7 @@ function route_zfailover_conf(t, ctx)
         if t.stats_name then
             name = t.stats_name .. "_retries"
         end
-        t.stats_id = stats_get_id(name)
+        t.stats_id = ctx:stats_get_id(name)
     end
     if t.failover_count == nil then
         t.failover_count = #t.children
