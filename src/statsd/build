@@ -1,0 +1,8 @@
+#!/bin/bash
+
+MEMC_PATH=$1
+gcc -g -O2 -fPIC -c statsd.c -I$MEMC_PATH/vendor/lua/src
+gcc -fpic -shared -o statsd.so statsd.o \
+           -L$MEMC_PATH/vendor/lua/src
+
+echo -e "you probably want to:\ncp statsd.so into $MEMC_PATH"

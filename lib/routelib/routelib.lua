@@ -820,7 +820,7 @@ end
 --
 
 --
--- route_latest start
+-- route_failover start
 --
 
 function route_failover_conf(t, ctx)
@@ -912,7 +912,7 @@ function route_failover_start(a, ctx)
 end
 
 --
--- route_latest end
+-- route_failover end
 --
 
 --

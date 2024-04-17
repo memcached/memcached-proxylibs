@@ -7,6 +7,9 @@ MEMC_PATH=$1
 # build with: cd vendor/lua ; make linux MYCFLAGS="-fPIC" or edit the Makefile
 gcc -g -O2 -fPIC -c ketama.c md5.c -I$MEMC_PATH/vendor/lua/src
 gcc -g -O2 -fPIC -c md5.c -I$MEMC_PATH/vendor/lua/src
+#gcc -fpic -shared -o ketama.so ketama.o md5.o \
+#           -L$MEMC_PATH/vendor/lua/src -llua
 gcc -fpic -shared -o ketama.so ketama.o md5.o \
-           -L$MEMC_PATH/vendor/lua/src -llua
+           -L$MEMC_PATH/vendor/lua/src
+
 echo -e "you probably want to:\ncp ketama.so into $MEMC_PATH"
