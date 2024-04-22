@@ -38,6 +38,8 @@ struct _statsd_s {
     int sock;
     int used;
     bool autoflush;
+    char *ns; // namespace
+    size_t nslen;
     char pkt[UDP_MAX_PAYLOAD];
 };
 
@@ -123,11 +125,12 @@ static int statsd_new(lua_State *L) {
     }
     lua_pop(L, 1);
 
+    size_t nslen = 0;
+    const char *ns = NULL;
     type = lua_getfield(L, -1, "namespace");
     if (type != LUA_TNIL) {
         if (type == LUA_TSTRING) {
-            // TODO: unimplemented.
-            const char *ns = lua_tostring(L, -1);
+            ns = lua_tolstring(L, -1, &nslen);
         } else {
             l_err(L, "stats client arg 'namespace' must be a string");
         }
@@ -149,8 +152,24 @@ static int statsd_new(lua_State *L) {
     if (autoflush) {
         sd->autoflush = true;
     }
-    luaL_setmetatable(L, METATABLE_NAME);
+    if (ns && nslen > 0) {
+        int need_dot = 0;
+        if (ns[nslen-1] != '.') {
+            need_dot = 1;
+        }
 
+        sd->ns = calloc(1, nslen+need_dot);
+        if (sd->ns == NULL) {
+            l_err(L, "stats client failed to allocate namespace memory");
+        }
+        memcpy(sd->ns, ns, nslen);
+        if (need_dot) {
+            sd->ns[nslen] = '.';
+        }
+        sd->nslen = nslen+need_dot;
+    }
+
+    luaL_setmetatable(L, METATABLE_NAME);
     _statsd_connect(sd, host, port);
 
     return 1;
@@ -211,7 +230,7 @@ static void _statsd_stat(lua_State *L, const char *type) {
 
     // 20 -> max value length as string + 10 extra chars for control
     // characters
-    if (klen + 30 + tlen > (UDP_MAX_PAYLOAD - sd->used)) {
+    if (klen + 30 + tlen + sd->nslen > (UDP_MAX_PAYLOAD - sd->used)) {
         _statsd_flush(sd);
     }
 
@@ -227,6 +246,12 @@ static void _statsd_stat(lua_State *L, const char *type) {
     // <METRIC_NAME>:<VALUE>|<TYPE>|@<SAMPLE_RATE>|#<TAG_KEY_1>:<TAG_VALUE_1>,<TAG_2>
     // pass-thru type for now.
     // sample rate not supported for now.
+    if (sd->ns) {
+        // using a namespace
+        memcpy(pkt, sd->ns, sd->nslen);
+        pkt += sd->nslen;
+    }
+
     memcpy(pkt, key, klen);
     pkt += klen;
     *pkt = ':';
@@ -264,6 +289,10 @@ static void _statsd_stat(lua_State *L, const char *type) {
 
 static int statsd_gc(lua_State *L) {
     struct _statsd_s *sd = lua_touserdata(L, 1);
+    if (sd->ns) {
+        free(sd->ns);
+        sd->ns = NULL;
+    }
     close(sd->sock);
     return 0;
 }

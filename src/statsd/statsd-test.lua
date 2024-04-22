@@ -6,6 +6,7 @@ function mcp_config_pools()
         host = "127.0.0.1",
         port = 8125,
         autoflush = false,
+        namespace = "extra.prefix.thing",
     })
 
     sd:count("foo", 1)
