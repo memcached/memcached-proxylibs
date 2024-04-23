@@ -265,6 +265,7 @@ static void _statsd_stat(lua_State *L, const char *type) {
     }
 
     *pkt = '|';
+    pkt++;
     // TODO: lets turn the type into a map with the size pre-calced?
     size_t typelen = strlen(type);
     memcpy(pkt, type, typelen);
