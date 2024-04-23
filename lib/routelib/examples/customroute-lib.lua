@@ -31,7 +31,7 @@ function route_myhello_conf(t, ctx)
     -- the result table must be a pure lua object, as it is copied between
     -- lua VM's from the configuration thread to the worker threads.
     -- this means special user objects, metatables, etc, will not transfer.
-    return { f = "route_myhello_start", a = t }
+    return t
 end
 
 -- all of the rest is run from each worker thread.
