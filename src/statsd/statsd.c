@@ -235,9 +235,9 @@ static void _statsd_stat(lua_State *L, const char *type) {
     }
 
     char *pkt_start;
-    char *pkt = pkt_start = sd->pkt;
+    char *pkt = pkt_start = sd->pkt + sd->used;
     if (sd->used) {
-        pkt += sd->used+1;
+        pkt++;
         // already something in the buffer, make a separator.
         *pkt = '\n';
         pkt++;

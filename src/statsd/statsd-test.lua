@@ -9,8 +9,11 @@ function mcp_config_pools()
         namespace = "extra.prefix.thing",
     })
 
-    sd:count("foo", 1)
-    sd:count("bar", 5, "foo:bar,baz:quux")
+    -- test force flushing.
+    for x=1, 500 do
+        sd:count("foo", 1)
+        sd:count("bar", 5, "foo:bar,baz:quux")
+    end
     sd:flush()
     sd:gauge("moar", 7)
     sd:flush()
