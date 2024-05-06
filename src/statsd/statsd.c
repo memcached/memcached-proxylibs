@@ -179,7 +179,7 @@ static int statsd_new(lua_State *L) {
 // connect()'ed UDP and then change the functions to bubble up errors.
 static void _statsd_flush(struct _statsd_s *sd) {
     // we're connected and using a linear buffer. standard send should work.
-    int sent = send(sd->sock, sd->pkt, sd->used, 0);
+    send(sd->sock, sd->pkt, sd->used, 0);
     // TODO: check for error or underrun.
     sd->used = 0;
 }
