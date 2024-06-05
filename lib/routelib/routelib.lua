@@ -841,44 +841,28 @@ local function route_failover_f(rctx, arg)
     local limit = arg.limit
     local t = arg.t
     local miss = arg.miss
-
-
+    local s = nil
+    local s_id = 0
     if arg.stats_id then
-        local s = mcp.stat
-        local s_id = arg.stats_id
+        s = mcp.stat
+        s_id = arg.stats_id
+    end
 
-        return function(r)
-            local retry = false
-            local res = nil
-            for i=1, limit do
-                res = rctx:enqueue_and_wait(r, t[i])
-                if retry then
-                    -- increment the retries counter
-                    s(s_id, 1)
-                end
-                if (miss == true and res:hit()) or (miss == false and res:ok()) then
-                    return res
-                end
-                -- only increment the retries counter for an actual retry
-                retry = true
+    return function(r)
+        local res = nil
+        for i=1, limit do
+            res = rctx:enqueue_and_wait(r, t[i])
+            if i > 1 and s then
+                -- increment the retries counter
+                s(s_id, 1)
             end
-
-            -- didn't get what we want, return the final one.
-            return res
-        end
-    else
-        return function(r)
-            local res = nil
-            for i=1, limit do
-                res = rctx:enqueue_and_wait(r, t[i])
-                if (miss == true and res:hit()) or (miss == false and res:ok()) then
-                    return res
-                end
+            if (miss == true and res:hit()) or (miss == false and res:ok()) then
+                return res
             end
-
-            -- didn't get what we want, return the final one.
-            return res
         end
+
+        -- didn't get what we want, return the final one.
+        return res
     end
 end
 
