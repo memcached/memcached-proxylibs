@@ -870,7 +870,7 @@ local function route_failover_f(rctx, arg)
         return function(r)
             local res = nil
             for i=1, limit do
-                local res = rctx:enqueue_and_wait(r, t[i])
+                res = rctx:enqueue_and_wait(r, t[i])
                 if (miss == true and res:hit()) or (miss == false and res:ok()) then
                     return res
                 end
