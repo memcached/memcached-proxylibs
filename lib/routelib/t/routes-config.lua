@@ -30,5 +30,14 @@ routes{
             miss = true,
             failover_count = 2,
         },
+        direct_a = route_direct{
+            child = "foo",
+        },
+        direct_b = route_direct{
+            child = "bar",
+        },
+        direct_c = route_direct{
+            child = "baz",
+        },
     },
 }
