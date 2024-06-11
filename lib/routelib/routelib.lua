@@ -329,6 +329,44 @@ local function configure_route(r, ctx)
     return { f = r.f, _rlib_route = true, a = ret }
 end
 
+-- route*() config functions can call this to get ids to use for stats counters
+local function stats_get_id(name)
+    local st = M.stats
+
+    -- already have an ID for this stat name.
+    if st.map[name] then
+        return st.map[name]
+    end
+
+    -- same name was seen previously, refresh it for the new map and return.
+    if st.old_map and st.old_map[name] then
+        local id = st.old_map[name]
+        st.map[name] = id
+        return id
+    end
+
+    -- iterate the ID's
+    if st.next_id < STATS_MAX then
+        local id = st.next_id
+        st.next_id = id + 1
+        mcp.add_stat(id, name)
+        st.map[name] = id
+        return id
+    end
+
+    if #st.freelist == 0 then
+        error("max number of stat counters reached:", STATS_MAX)
+    end
+
+    -- pop a free id from the list
+    -- TODO: before uncommenting this code, the proxy needs to be able to
+    -- internally reset a counter when the name changes.
+    --local id = table.remove(st.freelist)
+    --mcp.add_stat(id, name)
+    --st.map[name] = id
+    --return id
+end
+
 -- 1) walk the tree
 -- 2) for each entrypoint, look for child_* keys
 --  - check if metatable is RouteConf or not
@@ -419,44 +457,6 @@ local function routes_parse(c_in, pools)
     end
 
     return { r = routes, p = pools }
-end
-
--- route*() config functions can call this to get ids to use for stats counters
-local function stats_get_id(name)
-    local st = M.stats
-
-    -- already have an ID for this stat name.
-    if st.map[name] then
-        return st.map[name]
-    end
-
-    -- same name was seen previously, refresh it for the new map and return.
-    if st.old_map and st.old_map[name] then
-        local id = st.old_map[name]
-        st.map[name] = id
-        return id
-    end
-
-    -- iterate the ID's
-    if st.next_id < STATS_MAX then
-        local id = st.next_id
-        st.next_id = id + 1
-        mcp.add_stat(id, name)
-        st.map[name] = id
-        return id
-    end
-
-    if #st.freelist == 0 then
-        error("max number of stat counters reached:", STATS_MAX)
-    end
-
-    -- pop a free id from the list
-    -- TODO: before uncommenting this code, the proxy needs to be able to
-    -- internally reset a counter when the name changes.
-    --local id = table.remove(st.freelist)
-    --mcp.add_stat(id, name)
-    --st.map[name] = id
-    --return id
 end
 
 -- _after_ pre-processing all route handlers, check if any existing stats
@@ -829,7 +829,7 @@ function route_failover_conf(t, ctx)
         if t.stats_name then
             name = t.stats_name .. "_retries"
         end
-        t.stats_id = ctx:stats_get_id(name)
+        t.stats_id = ctx:get_stats_id(name)
     end
     if t.failover_count == nil then
         t.failover_count = #t.children
@@ -1023,7 +1023,7 @@ function route_zfailover_conf(t, ctx)
         if t.stats_name then
             name = t.stats_name .. "_retries"
         end
-        t.stats_id = ctx:stats_get_id(name)
+        t.stats_id = ctx:get_stats_id(name)
     end
     if t.failover_count == nil then
         t.failover_count = #t.children
