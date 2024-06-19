@@ -86,5 +86,15 @@ routes{
         direct_c = route_direct{
             child = "baz",
         },
+        d_submap = cmdmap{
+            mg = route_direct{ child = "foo" },
+            md = route_direct{ child = "bar" },
+            ma = route_direct{ child = "baz" },
+        },
     },
+    cmap = {
+        mg = route_direct{ child = "baz" },
+        md = route_direct{ child = "bar" },
+        ma = route_direct{ child = "foo" },
+    }
 }

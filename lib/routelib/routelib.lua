@@ -1,5 +1,29 @@
 local STATS_MAX <const> = 1024
 
+local CMD_ID_MAP <const> = {
+    mg = mcp.CMD_MG,
+    ms = mcp.CMD_MS,
+    md = mcp.CMD_MD,
+    mn = mcp.CMD_MN,
+    ma = mcp.CMD_MA,
+    me = mcp.CMD_ME,
+    get = mcp.CMD_GET,
+    gat = mcp.CMD_GAT,
+    set = mcp.CMD_SET,
+    add = mcp.CMD_ADD,
+    cas = mcp.CMD_CAS,
+    gets = mcp.CMD_GETS,
+    gats = mcp.CMD_GATS,
+    incr = mcp.CMD_INCR,
+    decr = mcp.CMD_DECR,
+    touch = mcp.CMD_TOUCH,
+    append = mcp.CMD_APPEND,
+    delete = mcp.CMD_DELETE,
+    replace = mcp.CMD_REPLACE,
+    prepend = mcp.CMD_PREPEND,
+    all = mcp.CMD_ANY_STORAGE,
+}
+
 -- classes for typing.
 -- NOTE: metatable classes do not cross VM's, so they may only be used in the
 -- same VM they were assigned (pools or routes)
@@ -114,12 +138,20 @@ function dsay(...)
 end
 
 function cmdmap(t)
+    local remap = {}
     for k, v in pairs(t) do
-        if type(k) ~= "number" then
-            error("cmdmap keys must all be numeric")
+        local nk = k
+        if type(k) == "string" then
+            nk = CMD_ID_MAP[k]
+            if nk == nil then
+                error("unknown command in cmdmap: " .. k)
+            end
+        elseif type(k) ~= "number" then
+            error("cmdmap keys must all be strings or id numbers")
         end
+        remap[nk] = v
     end
-    return setmetatable(t, CommandMap)
+    return setmetatable(remap, CommandMap)
 end
 
 --
@@ -420,14 +452,24 @@ local function configure_router(set, pools, c_in)
                 error("unknown route map type")
             end
         end
-    else
+    end
+
+    if set.cmap then
+        local cmap_new = {}
         -- a command map
-        ctx._label = "default"
-        -- walk set.cmap instead
+        ctx._label = "cmdmap"
         for cmk, cmv in pairs(set.cmap) do
-            ctx._cmd = cmk
-            set.cmap[cmk] = configure_route(cmv, ctx)
+            local nk = cmk
+            if type(cmk) == "string" then
+                nk = CMD_ID_MAP[cmk]
+            end
+            if nk == nil then
+                error("unknown command in cmdmap: " .. cmk)
+            end
+            ctx._cmd = nk
+            cmap_new[nk] = configure_route(cmv, ctx)
         end
+        set.cmap = cmap_new
     end
 
     if set.default then
@@ -445,10 +487,6 @@ local function routes_parse(c_in, pools)
     local routes = c_in.routes
 
     for tag, set in pairs(routes) do
-        if set.map and set.cmap then
-            error("cannot set both map and cmap for a router")
-        end
-
         if set.map == nil and set.cmap == nil then
             error("must pass map or cmap to a router")
         end
@@ -536,6 +574,7 @@ end
 -- can have sub-maps and they'll both just look like tables.
 local function make_router(set, pools)
     local map = {}
+    local cmap = {}
     dsay("making a new router")
 
     local ctx = {
@@ -588,6 +627,16 @@ local function make_router(set, pools)
         end
     }
 
+    -- NOTE: we're directly passing the router configuration from the user
+    -- into the function, but we could use indirection here to create
+    -- convenience functions, default sets, etc.
+    local conf = set.conf
+    if set.default then
+        ctx._label = "default"
+        ctx._cmd = mcp.CMD_ANY_STORAGE
+        conf.default = make_route(set.default, ctx)
+    end
+
     if set.map then
         -- create a new map with route entries resolved.
         for mk, mv in pairs(set.map) do
@@ -618,35 +667,24 @@ local function make_router(set, pools)
                 map[mk] = fgen
             end
         end
-    else
+        conf.map = map
+    end
+
+    if set.cmap then
         -- we're only routing based on the command, no prefix strings
-        ctx._label = "default"
+        ctx._label = "cmdmap"
         for cmk, cmv in pairs(set.cmap) do
             ctx._cmd = cmk
             local fgen = make_route(cmv, ctx)
             if fgen == nil then
                 error("route start handler did not return a generator")
             end
-            map[cmk] = fgen
+            cmap[cmk] = fgen
         end
+        conf.cmap = cmap
     end
 
-    -- NOTE: we're directly passing the router configuration from the user
-    -- into the function, but we could use indirection here to create
-    -- convenience functions, default sets, etc.
-    local conf = set.conf
-    if set.default then
-        ctx._label = "default"
-        ctx._cmd = mcp.CMD_ANY_STORAGE
-        conf.default = make_route(set.default, ctx)
-    end
-
-    conf.map = map
-    if set.map then
-        return mcp.router_new(conf)
-    else
-        return conf
-    end
+    return mcp.router_new(conf)
 end
 
 --
@@ -680,18 +718,6 @@ function mcp_config_pools()
     return conf
 end
 
-local function route_attach_map(root, tag)
-    -- if we have a default, first attach everything to CMD_ANY_STORAGE
-    if root.default then
-        mcp.attach(mcp.CMD_ANY_STORAGE, root.default, tag)
-    end
-
-    -- now override anything more specific
-    for cmd, fgen in pairs(root.map) do
-        mcp.attach(cmd, fgen, tag)
-    end
-end
-
 -- TODO: need a method to nil out a tag/route if unspecified. I think this
 -- doesn't work from the API level.
 -- NOTES:
@@ -714,22 +740,10 @@ function mcp_config_routes(c)
         local root = make_router(set, pools)
         if tag == "default" then
             dsay("attaching to proxy default tag")
-            if type(root) == "userdata" then
-                dsay("attaching a router")
-                mcp.attach(mcp.CMD_ANY_STORAGE, root)
-            else
-                dsay("attaching a command map")
-                route_attach_map(root)
-            end
+            mcp.attach(mcp.CMD_ANY_STORAGE, root)
         else
             dsay("attaching to proxy for tag:", tag)
-            if type(root) == "userdata" then
-                dsay("attaching a router")
-                mcp.attach(mcp.CMD_ANY_STORAGE, root, tag)
-            else
-                dsay("attaching a command map")
-                route_attach_map(root, tag)
-            end
+            mcp.attach(mcp.CMD_ANY_STORAGE, root, tag)
         end
     end
     dsay("mcp_config_routes: done")

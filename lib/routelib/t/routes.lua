@@ -42,6 +42,47 @@ function clearAll(p)
     p:clear()
 end
 
+TestCmaps = {}
+
+function TestCmaps:testSub()
+    p:c_send("mg d_submap/a t\r\n")
+    p:be_recv_c(1, "mg to first be")
+    p:be_send(1, "HD t31\r\n")
+    p:c_recv_be()
+
+    p:c_send("md d_submap/a\r\n")
+    p:be_recv_c(2, "md to second be")
+    p:be_send(2, "HD\r\n")
+    p:c_recv_be()
+
+    p:c_send("ma d_submap/a\r\n")
+    p:be_recv_c(3, "ma to third be")
+    p:be_send(3, "HD\r\n")
+    p:c_recv_be()
+
+    clearAll(p)
+end
+
+-- "top level" route cmap as fallback for unknown map entry
+function TestCmaps:testTop()
+    p:c_send("mg badroute/a t\r\n")
+    p:be_recv_c(3, "mg to third be")
+    p:be_send(3, "HD t32\r\n")
+    p:c_recv_be()
+
+    p:c_send("md badroute/a\r\n")
+    p:be_recv_c(2, "md to second be")
+    p:be_send(2, "HD\r\n")
+    p:c_recv_be()
+
+    p:c_send("ma badroute/a\r\n")
+    p:be_recv_c(1, "ma to first be")
+    p:be_send(1, "HD\r\n")
+    p:c_recv_be()
+
+    clearAll(p)
+end
+
 -- we have three pools configured but set failover limit to 2
 TestMissFailover = {}
 
