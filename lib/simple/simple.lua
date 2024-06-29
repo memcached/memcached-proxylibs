@@ -1,8 +1,6 @@
--- NOTE: Still missing a lot! works for basics.
--- see examples: onezone.lua, multizone.lua, etc.
--- If you want something here, please ask, as supporting all of the main
--- features is a goal, but I am adding them in a random order unless otherwise
--- informed.
+-- WARNING! THIS LIBRARY IS DEPRECATED! It will stop working with newer
+-- versions of memcached.
+-- Please use routelib: https://github.com/memcached/memcached-proxylibs/blob/main/lib/routelib/README.md
 
 local M = { c = { pools = {} } }
 local STAT_FAILOVER <const> = 1
