@@ -44,7 +44,7 @@ routes{
         },
         bar = cmdmap{
             -- only handle SET commands for path "bar/*"
-            [mcp.CMD_SET] = route_allfastest{
+            set = route_allfastest{
                 children = { "bar" },
             },
         },

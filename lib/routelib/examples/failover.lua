@@ -19,13 +19,13 @@ pools{
 routes{
     map = {
         bar = cmdmap{
-            [mcp.CMD_GET] = route_failover{
+            get = route_failover{
                 children = { "foo", "baz" },
                 stats = true,
                 miss = true,
                 shuffle = true,
             },
-            [mcp.CMD_SET] = route_allsync{
+            set = route_allsync{
                 children = { "foo", "baz" },
             },
         },

@@ -18,7 +18,7 @@ pools{
 
 routes{
     cmap = {
-        [mcp.CMD_GET] = route_allfastest{
+        get = route_allfastest{
             children = { "foo" },
         },
     },

@@ -29,7 +29,7 @@ pools{
 routes{
     map = {
         bar = cmdmap{
-            [mcp.CMD_GET] = route_zfailover{
+            get = route_zfailover{
                 -- references to a poolset are magically replaced with a
                 -- table of pool objects
                 children = "set_ztest",
@@ -41,7 +41,7 @@ routes{
             -- route_allsync isn't programmed to understand pool sets, but
             -- can still use it: it's accepting a table of pools and just
             -- doesn't care about the keys.
-            [mcp.CMD_SET] = route_allsync{
+            set = route_allsync{
                 children = "set_ztest"
             },
         },
