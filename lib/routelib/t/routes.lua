@@ -124,6 +124,47 @@ function TestMissFailover:testFailure()
     clearAll(p)
 end
 
+-- we have three pools configured but set failover limit to 2
+TestMissFailoverPSET = {}
+
+function TestMissFailoverPSET:testHit()
+    p:c_send("mg failoverpset/b t\r\n")
+    p:be_recv_c(1, "first be")
+    p:be_send(1, "HD t1\r\n")
+    p:c_recv_be("client received hit")
+    clearAll(p)
+end
+
+function TestMissFailoverPSET:testMiss()
+    p:c_send("mg failoverpset/b t\r\n")
+    p:be_recv_c(1, "first be")
+    p:be_send(1, "EN\r\n")
+    p:be_recv_c(2, "second be got failover req")
+    p:be_send(2, "HD t3\r\n")
+    p:c_recv_be("client received second hit")
+    clearAll(p)
+end
+
+function TestMissFailoverPSET:testAllMiss()
+    p:c_send("mg failoverpset/b t\r\n")
+    for x=1, 2 do
+        p:be_recv_c(x, "be received req")
+        p:be_send(x, "EN\r\n")
+    end
+    p:c_recv_be("client received a miss")
+    clearAll(p)
+end
+
+function TestMissFailoverPSET:testFailure()
+    p:c_send("mg failoverpset/b t\r\n")
+    p:be_recv_c(1, "first be")
+    p:be_send(1, "SERVER_ERROR cracked an egg\r\n")
+    p:be_recv_c(2, "second be")
+    p:be_send(2, "HD t4\r\n")
+    p:c_recv_be("client received hit")
+    clearAll(p)
+end
+
 TestNoMissFailover = {}
 
 function TestNoMissFailover:testHit()

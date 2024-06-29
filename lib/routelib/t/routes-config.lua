@@ -38,13 +38,23 @@ pools{
                 "127.0.0.1:11324",
             }
         },
-    }
+    },
+    set_arr = {
+        { backends = { "127.0.0.1:11322" } },
+        { backends = { "127.0.0.1:11323" } },
+        { backends = { "127.0.0.1:11324" } },
+    },
 }
 
 routes{
     map = {
         failover = route_failover{
             children = { "foo", "bar", "baz" },
+            miss = true,
+            failover_count = 2,
+        },
+        failoverpset = route_failover{
+            children = "set_arr",
             miss = true,
             failover_count = 2,
         },
