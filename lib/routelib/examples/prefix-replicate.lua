@@ -5,8 +5,9 @@
 -- spread across a pool of servers to maximize available memory. Then, a small
 -- set of highly accessed "hot" keys are replicated across multiple servers
 
-verbose(true)
-debug(true)
+--verbose(true)
+--debug(true)
+
 pools{
     main = {
         backends = {
@@ -34,6 +35,8 @@ routes{
             all = route_allfastest{
                 children = "set_hot" 
             },
+            -- override specific commands to fetch from just one server for
+            -- performance reasons.
             get = route_failover{
                 children = "set_hot",
                 stats = true,
