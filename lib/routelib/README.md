@@ -50,11 +50,9 @@ NOTE: the proxy is simply a router. It does not handle starting/stopping of
 backend memcached instances. For this example you need a memcached listening
 on localhost port 11212
 
-You may need to adjust the require line to give the full path to where `routelib.lua` was downloaded.
-
 Now, start the proxy: `memcached -o proxy_config=routelib.lua,proxy_arg=example.lua`
 
-You may also specify the path to lua libraries with environment variables: `LUA_PATH="/path/to/etc/?.lua" memcached -o proxy_config=./example.lua`
+You may also specify the path to lua libraries with environment variables: `LUA_PATH="/path/to/etc/?.lua" memcached -o proxy_config=routelib.lua,proxy_arg=example.lua``
 
 ## Main config Reference
 
