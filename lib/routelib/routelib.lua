@@ -525,6 +525,8 @@ local function stats_turnover()
                 dsay("stats entry no longer used, freelisting id:", k, st.old_map[k])
                 -- key from old map not in new map, freelist the ID
                 table.insert(st.freelist, st.old_map[k])
+                -- blank the name to remove it from stats output
+                mcp.add_stat(st.old_map[k], "")
             end
         end
     end
