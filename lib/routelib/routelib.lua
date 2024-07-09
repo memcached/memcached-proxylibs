@@ -1147,6 +1147,95 @@ end
 -- route_zfailover end
 --
 
+--
+-- route_ttl start
+--
+
+function route_ttl_conf(t, ctx)
+    -- just a TTL arg?
+    return t
+end
+
+-- NOTE: this could be written more directly by duplicating the function code:
+-- - with a specific command, directly return the function instead of
+-- generating both and dropping one
+-- - in the "unknown command" section, just use if's in the main code for the
+-- flag/token command and a single rctx:enqueue call for return.
+--
+-- We do this as a programming exercise. If the functions were much larger it
+-- would make more sense.
+local function route_ttl_f(rctx, arg)
+    local ttl = arg.ttl
+    local cmd = arg.cmd
+    local h = arg.handle
+
+    -- meta set has TTL in a flag
+    local cmd_ms = function(r)
+        r:flag_set('T', ttl)
+        return rctx:enqueue_and_wait(r, h)
+    end
+    -- SET/ADD/CAS have TTL in the 4th token
+    local cmd_txt = function(r)
+        r:token(4, ttl)
+        return rctx:enqueue_and_wait(r, h)
+    end
+
+    -- command known ahead of time, return specialized function
+    if cmd then
+        if cmd == mcp.CMD_MS then
+            return cmd_ms
+        elseif cmd == mcp.CMD_SET then
+            return cmd_txt
+        elseif cmd == mcp.CMD_ADD then
+            return cmd_txt
+        elseif cmd == mcp.CMD_CAS then
+            return cmd_txt
+        else
+            error("invalid command for route_ttl")
+        end
+    end
+
+    -- command isn't known ahead of time, find the function at runtime.
+    return function(r)
+        local cmd = r:command()
+        -- for a small number of options should be more efficient than a table
+        if cmd == mcp.CMD_MS then
+            return cmd_ms(r)
+        elseif cmd == mcp.CMD_SET then
+            return cmd_txt(r)
+        elseif cmd == mcp.CMD_ADD then
+            return cmd_txt(r)
+        elseif cmd == mcp.CMD_CAS then
+            return cmd_txt(r)
+        else
+            return "SERVER_ERROR invalid command for route_ttl\r\n"
+        end
+    end
+end
+
+function route_ttl_start(a, ctx)
+    -- if ctx:cmd() == mcp.CMD_ANY_STORAGE do etc else etc
+    local fgen = mcp.funcgen_new()
+    local o = { ttl = a.ttl }
+    o.handle = fgen:new_handle(a.child)
+    if ctx:cmd() ~= mcp.CMD_ANY_STORAGE then
+        o.cmd = ctx:cmd()
+    end
+
+    fgen:ready({
+        a = o,
+        n = ctx:label(),
+        f = route_ttl_f,
+    })
+    return fgen
+
+end
+
+--
+-- route_ttl end
+--
+
+
 register_route_handlers({
     "failover",
     "allfastest",
@@ -1154,4 +1243,5 @@ register_route_handlers({
     "split",
     "direct",
     "zfailover",
+    "ttl",
 })

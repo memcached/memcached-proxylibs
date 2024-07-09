@@ -101,6 +101,13 @@ routes{
             md = route_direct{ child = "bar" },
             ma = route_direct{ child = "baz" },
         },
+        ttl_submap = cmdmap{
+            ms = route_ttl{ ttl = 45, child = "foo" },
+            set = route_ttl{ ttl = 45, child = "foo" },
+            add = route_ttl{ ttl = 45, child = "foo" },
+            cas = route_ttl{ ttl = 45, child = "foo" },
+        },
+        ttl = route_ttl{ ttl = 45, child = "foo" },
     },
     cmap = {
         mg = route_direct{ child = "baz" },

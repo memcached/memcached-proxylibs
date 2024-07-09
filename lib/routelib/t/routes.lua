@@ -42,6 +42,83 @@ function clearAll(p)
     p:clear()
 end
 
+TestTTL = {}
+
+-- test twice in here: once for the submap and once for the non-map
+function TestTTL:testMS()
+    local keys = { "ttl/a", "ttl_submap/a" }
+
+    for _, key in ipairs(keys) do
+        local pfx = "ms " .. key
+        p:c_send(pfx .. " 2 T999\r\nhi\r\n")
+        p:be_recv(1, pfx .. " 2 T45\r\n")
+        p:be_recv(1, "hi\r\n")
+        p:be_send(1, "HD\r\n")
+        p:c_recv_be()
+
+        -- no existing flag (ie: TTL0)
+        p:c_send(pfx .. " 2\r\nhi\r\n")
+        p:be_recv(1, pfx .. " 2 T45\r\n")
+        p:be_recv(1, "hi\r\n")
+        p:be_send(1, "HD\r\n")
+        p:c_recv_be()
+
+        -- unrelated flag makes it through
+        p:c_send(pfx .. " 2 F50\r\nhi\r\n")
+        p:be_recv(1, pfx .. " 2 F50 T45\r\n")
+        p:be_recv(1, "hi\r\n")
+        p:be_send(1, "HD\r\n")
+        p:c_recv_be()
+    end
+
+    clearAll(p)
+end
+
+function TestTTL:testSET()
+    local keys = { "ttl/a", "ttl_submap/a" }
+
+    for _, key in ipairs(keys) do
+        local pfx = "set " .. key
+        p:c_send(pfx .. " 0 999 2\r\nhi\r\n")
+        p:be_recv(1, pfx .. " 0 45 2\r\n")
+        p:be_recv(1, "hi\r\n")
+        p:be_send(1, "STORED\r\n")
+        p:c_recv_be()
+    end
+
+    clearAll(p)
+end
+
+function TestTTL:testADD()
+    local keys = { "ttl/a", "ttl_submap/a" }
+
+    for _, key in ipairs(keys) do
+        local pfx = "add " .. key
+        p:c_send(pfx .. " 0 999 2\r\nhi\r\n")
+        p:be_recv(1, pfx .. " 0 45 2\r\n")
+        p:be_recv(1, "hi\r\n")
+        p:be_send(1, "STORED\r\n")
+        p:c_recv_be()
+    end
+
+    clearAll(p)
+end
+
+function TestTTL:testCAS()
+    local keys = { "ttl/a", "ttl_submap/a" }
+
+    for _, key in ipairs(keys) do
+        local pfx = "cas " .. key
+        p:c_send(pfx .. " 0 999 2 333\r\nhi\r\n")
+        p:be_recv(1, pfx .. " 0 45 2 333\r\n")
+        p:be_recv(1, "hi\r\n")
+        p:be_send(1, "STORED\r\n")
+        p:c_recv_be()
+    end
+
+    clearAll(p)
+end
+
 TestCmaps = {}
 
 function TestCmaps:testSub()
