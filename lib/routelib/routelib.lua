@@ -24,32 +24,6 @@ local CMD_ID_MAP <const> = {
     all = mcp.CMD_ANY_STORAGE,
 }
 
--- classes for typing.
--- NOTE: metatable classes do not cross VM's, so they may only be used in the
--- same VM they were assigned (pools or routes)
-local CommandMap = {}
-local RouteConf = {}
-local BuiltPoolSet = {} -- processed pool set.
-
-local function module_defaults(old)
-    local stats = {
-        map = {},
-        freelist = {},
-        next_id = 1,
-    }
-    if old and old.stats then
-        stats = old.stats
-    end
-    return {
-        c_in = {
-            pools = {},
-            routes = {},
-        },
-        stats = stats,
-    }
-end
-local M = module_defaults()
-
 -- https://stackoverflow.com/questions/9168058/how-to-dump-a-table-to-console
 -- should probably get a really nice one of these for the library instead.
 local function dump(o)
@@ -64,6 +38,35 @@ local function dump(o)
       return tostring(o)
    end
 end
+
+-- classes for typing.
+-- NOTE: metatable classes do not cross VM's, so they may only be used in the
+-- same VM they were assigned (pools or routes)
+local CommandMap = {}
+local RouteConf = {}
+local BuiltPoolSet = {} -- processed pool set.
+
+-- TODO: this can/should be seeded only during config_pools
+local function module_defaults(old)
+    local stats = {
+        map = {},
+        freelist = {},
+        next_id = 1,
+    }
+    if old and old.stats then
+        stats = old.stats
+        stats.map = {} -- but reset the main map
+    end
+    return {
+        c_in = {
+            pools = {},
+            routes = {},
+        },
+        stats = stats,
+    }
+end
+__M = module_defaults(__M)
+local M = __M
 
 --
 -- User interface functions
@@ -377,6 +380,15 @@ local function stats_get_id(name)
         return id
     end
 
+    -- pop a free id from the list
+    if #st.freelist ~= 0 then
+        local id = table.remove(st.freelist)
+        dsay("stats reusing freelisted id:", name, id)
+        mcp.add_stat(id, name)
+        st.map[name] = id
+        return id
+    end
+
     -- iterate the ID's
     if st.next_id < STATS_MAX then
         local id = st.next_id
@@ -389,14 +401,6 @@ local function stats_get_id(name)
     if #st.freelist == 0 then
         error("max number of stat counters reached:", STATS_MAX)
     end
-
-    -- pop a free id from the list
-    -- TODO: before uncommenting this code, the proxy needs to be able to
-    -- internally reset a counter when the name changes.
-    --local id = table.remove(st.freelist)
-    --mcp.add_stat(id, name)
-    --st.map[name] = id
-    --return id
 end
 
 -- 1) walk the tree
@@ -425,7 +429,9 @@ local function configure_router(set, pools, c_in)
             return c_in.local_zone
         end,
         get_stats_id = function(self, name)
-            return stats_get_id(name)
+            local id = stats_get_id(name)
+            dsay("stats get id:", name, id)
+            return id
         end
     }
 
@@ -514,7 +520,9 @@ local function stats_turnover()
 
     if st.old_map then
         for k, v in pairs(st.old_map) do
+            --dsay("checking old stats map entry:", k, v)
             if st.map[k] == nil then
+                dsay("stats entry no longer used, freelisting id:", k, st.old_map[k])
                 -- key from old map not in new map, freelist the ID
                 table.insert(st.freelist, st.old_map[k])
             end
