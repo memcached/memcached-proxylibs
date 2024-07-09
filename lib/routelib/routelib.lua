@@ -707,8 +707,8 @@ end
 -- mcp_config_routes executes from each worker thread
 
 function mcp_config_pools()
-    dsay("mcp_config_pools: start")
     load_userconfig(mcp.start_arg)
+    dsay("=== mcp_config_pools: start ===")
     -- create all necessary pool objects and prepare the configuration for
     -- passing on to workers
     -- Step 0) update global settings if requested
@@ -721,8 +721,13 @@ function mcp_config_pools()
     -- Step 2) prepare router descriptions
     local conf = routes_parse(M.c_in, pools)
     -- Step 3) Reset global configuration
-    dsay("mcp_config_pools: done")
     stats_turnover()
+    dsay("=== mcp_config_pools: done ===")
+
+    -- let say/dsay work in the worker reload stage
+    conf.is_verbose = M.is_verbose
+    conf.is_debug = M.is_debug
+
     M = module_defaults(M)
 
     return conf
@@ -741,7 +746,10 @@ end
 function mcp_config_routes(c)
     local routes = c.r
     local pools = c.p
-    dsay("mcp_config_routes: start")
+    M.is_verbose = c.is_verbose
+    M.is_debug = c.is_debug
+
+    dsay("=== mcp_config_routes: start ===")
 
     -- for each tagged route tree, swap pool names for pool objects, create
     -- the function generators, and the top level router object.
@@ -756,7 +764,7 @@ function mcp_config_routes(c)
             mcp.attach(mcp.CMD_ANY_STORAGE, root, tag)
         end
     end
-    dsay("mcp_config_routes: done")
+    dsay("=== mcp_config_routes: done ===")
 end
 
 --
