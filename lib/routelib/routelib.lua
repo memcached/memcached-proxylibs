@@ -555,7 +555,7 @@ local function make_route(arg, ctx)
                     for ck, cv in pairs(v) do
                         -- TODO: else if table throw error?
                         -- should limit child recursion.
-                        if type(cv) == "table" and cv.rlib_route then
+                        if type(cv) == "table" and cv._rlib_route then
                             v[ck] = make_route(cv, ctx)
                         elseif type(cv) == "string" then
                             v[ck] = ctx:get_child(cv)

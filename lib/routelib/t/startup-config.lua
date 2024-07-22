@@ -48,5 +48,8 @@ routes{
         zee = route_allsync{
             children = { "set_bar_z1", "set_bar_z2" },
         },
+        gee = route_allsync{
+            children = { "foo", route_direct{ child = "baz" } },
+        },
     }
 }
