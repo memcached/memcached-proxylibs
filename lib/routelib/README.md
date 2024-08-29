@@ -33,18 +33,27 @@ pools{
         backends = {
             "127.0.0.1:11212",
         }
+    },
+    fallback = {
+        backends = {
+            "127.0.0.1:11213",
+        }
     }
 }
 
 routes{
-    bar = route_direct{
-        child = "foo",
+    map = {
+        bar = route_direct{
+            child = "foo",
+        },
     },
+    default = route_direct{ child = "fallback" }
 }
 ```
 
 In this configuration requests that start with "bar/" will use the backends
-described in pool "foo".
+described in pool "foo". Any key that does not start with "bar/" will instead
+be fetched from the "fallback" pool, which we added as the default route.
 
 NOTE: the proxy is simply a router. It does not handle starting/stopping of
 backend memcached instances. For this example you need a memcached listening
