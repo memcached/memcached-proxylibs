@@ -144,7 +144,7 @@ routes{
         -- assign route handlers by what specific command was used to get here.
         bar = cmdmap{
             -- only handle SET commands for path "bar/*"
-            [mcp.CMD_SET] = route_allfastest{
+            set = route_allfastest{
                 children = { "bar" },
             },
         },
@@ -163,6 +163,69 @@ routes{
 }
 ```
 ---
+
+## Zones and pool sets
+
+Some route handlers use a high level concept of "zones", which can be combined
+with "pool sets" to make copies of cache data that may span multiple racks,
+availability zones, regions, etc.
+
+The router is first told what its "local zone" name is. Zone aware route
+handlers will use this to try to first get data from the nearest zone, or
+ensure copies are in all zones, and so on.
+
+Each zone will have its own individual pool of backends, which act as one big
+logical pool with one copy of a key in each zone.
+
+These pool sets are defined with a special syntax.
+
+```lua
+local_zone("west")
+
+pools{
+    set_main = {
+        west = { backends = { etc } },
+        mid  = { backends = { etc } },
+        east = { backends = { etc } },
+    }
+}
+
+routes{
+    map = {
+        main = route_zfailover{
+            -- routelib will do the work of resolving the set here.
+            children = "set_main",
+        }
+    }
+}
+```
+
+## Pool sets without zones
+
+Pool sets (as described above) can also be used as shorthand for non-zoned
+routes. For example, instead of listing all of the pools for an 'allsync'
+route, we define a pool set.
+
+This example defines three pools of backends, then collects them using array-style syntax.
+The allsync route will make three copies of all requests.
+
+```lua
+pools{
+    set_all = {
+        { backends = { etc } },
+        { backends = { etc } },
+        { backends = { etc } },
+    }
+}
+
+routes{
+    map = {
+        main = route_allsync{
+            children = "set_all"
+        }
+    }
+}
+```
 
 ## Writing custom route handlers
 
@@ -195,6 +258,40 @@ route_allsync{
 }
 ```
 
+### `route_allfastest`
+
+Routes a request to all supplied pools in parallel. Returns the first response
+obtained.
+
+```lua
+route_allfastest{
+    children = { "poola", "poolb", "poolc" }
+}
+```
+
+### `route_split`
+
+Routes a request to child_a and child_b, but only waits for the response from
+child_a.
+
+```lua
+route_split{
+    child_a = "poola",
+    child_b = "poolb"
+}
+```
+
+### `route_ttl`
+
+Replaces the TTL in a set, add, cas, or ms request.
+
+```lua
+route_ttl{
+  ttl = 45,
+  child = "pool"
+}
+```
+
 ### `route_failover`
 
 Takes a list of pools and attempts to run a command in order. Behavior can be
@@ -210,5 +307,23 @@ route_failover{
     -- failover if a fetch request was a miss.
     -- by default we only fail over on error conditions
     miss = true,
+}
+```
+
+### `route_zfailover`
+
+For usage first see `Zones and pool sets` above.
+
+Operates similarly to `route_failover`, except it prefers the local route
+first. If the first response does not have the desired result, _all_ far
+routes are then checked in parallel.
+
+```lua
+route_zfailover{
+    children = "set_all",
+    -- add user stats counter for failovers
+    stats = true,
+    -- fail over on miss instead of only errors.
+    miss = true
 }
 ```
