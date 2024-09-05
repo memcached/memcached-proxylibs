@@ -184,9 +184,9 @@ local_zone("west")
 
 pools{
     set_main = {
-        west = { backends = { etc } },
-        mid  = { backends = { etc } },
-        east = { backends = { etc } },
+        west   = { backends = { etc } },
+        south  = { backends = { etc } },
+        east   = { backends = { etc } },
     }
 }
 
