@@ -6,7 +6,7 @@ debug(true)
 
 -- override proxy settings
 settings{
-    active_request_limit = 100,
+    active_req_limit = 100,
     backend_connect_timeout = 3,
 }
 

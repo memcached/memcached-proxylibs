@@ -84,7 +84,7 @@ See below for a full reference on route handlers provided by the library.
 -- Overrides proxy-wide global settings
 settings{
     -- settings are as described in the wiki
-    active_request_limit = 100,
+    active_req_limit = 100,
     -- if supplied, this overrides the defaults for pool settings.
     -- see the `mcp.pool()` docs in the wiki.
     pool_options = {
