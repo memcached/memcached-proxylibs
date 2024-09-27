@@ -376,15 +376,44 @@ end
 
 TestAllFastest = {}
 
--- Honestly not sure what else to test here?
--- this route returns the result regardless of what it is. as long as it
--- returns after the first one it's good.
+-- allfastest should return the first non-error response. Else the final
+-- error.
 function TestAllFastest:testBasic()
     p:c_send("mg allfastest/a t\r\n")
     p:be_recv_c({1, 2, 3}, "all three got request")
     p:be_send(2, "HD t2\r\n")
     p:c_recv_be("first response")
     p:be_send({1, 3}, "HD t4\r\n")
+    clearAll(p)
+end
+
+function TestAllFastest:testFirstFail()
+    p:c_send("mg allfastest/b t\r\n")
+    p:be_recv_c({1, 2, 3}, "all three got request")
+    p:be_send(1, "SERVER_ERROR too many potatos\r\n")
+    p:be_send(2, "SERVER_ERROR something\r\n")
+    p:be_send(3, "HD t3\r\n")
+    p:c_recv("HD t3\r\n")
+    clearAll(p)
+end
+
+function TestAllFastest:testLastErr()
+    p:c_send("mg allfastest/c t\r\n")
+    p:be_recv_c({1, 2, 3}, "all three got request")
+    p:be_send(1, "SERVER_ERROR one\r\n")
+    p:be_send(2, "SERVER_ERROR two\r\n")
+    p:be_send(3, "SERVER_ERROR three\r\n")
+    p:c_recv("SERVER_ERROR three\r\n")
+    clearAll(p)
+end
+
+function TestAllFastest:testMiddleErr()
+    p:c_send("mg allfastest/d t\r\n")
+    p:be_recv_c({1, 2, 3}, "all three got request")
+    p:be_send(1, "SERVER_ERROR one\r\n")
+    p:be_send(2, "HD t5\r\n")
+    p:be_send(3, "SERVER_ERROR final\r\n")
+    p:c_recv("HD t5\r\n")
     clearAll(p)
 end
 

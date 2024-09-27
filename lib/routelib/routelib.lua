@@ -820,17 +820,23 @@ end
 
 -- so many layers of generation :(
 local function route_allfastest_f(rctx, arg)
-    local mode = mcp.WAIT_ANY
+    local mode = mcp.WAIT_OK
     dsay("generating an allfastest function")
     return function(r)
         rctx:enqueue(r, arg)
         local done = rctx:wait_cond(1, mode)
+        local final = nil
+        -- return first non-error.
         for x=1, #arg do
-            local res = rctx:res_any(arg[x])
-            if res ~= nil then
+            local res, mode = rctx:result(arg[x])
+            if mode == mcp.RES_OK or mode == mcp.RES_GOOD then
                 return res
+            else
+                final = res
             end
         end
+        -- return an error of the final result
+        return final
     end
 end
 
