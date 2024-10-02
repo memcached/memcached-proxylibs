@@ -869,9 +869,6 @@ function route_failover_conf(t, ctx)
         end
         t.stats_id = ctx:get_stats_id(name)
     end
-    if t.failover_count == nil then
-        t.failover_count = #t.children
-    end
     return t
 end
 
@@ -926,7 +923,16 @@ function route_failover_start(a, ctx)
     end
 
     o.miss = a.miss
-    o.limit = a.failover_count
+    local hcount = #(o["t"])
+    if a.failover_count then
+        if a.failover_count > hcount then
+            o.limit = hcount
+        else
+            o.limit = a.failover_count
+        end
+    else
+        o.limit = hcount
+    end
     o.stats_id = a.stats_id
 
     fgen:ready({ a = o, n = ctx:label(), f = route_failover_f })
