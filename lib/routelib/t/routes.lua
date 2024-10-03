@@ -417,6 +417,16 @@ function TestAllFastest:testMiddleErr()
     clearAll(p)
 end
 
+function TestAllFastest:testResume()
+    p:c_send("mg allfastest/d t\r\n")
+    p:be_recv_c({1, 2, 3}, "all three got request")
+    p:be_send(3, "HD t6\r\n")
+    p:c_recv_be("got response from 3")
+    p:be_send(1, "SERVER_ERROR one\r\n")
+    p:be_send(2, "SERVER_ERROR two\r\n")
+    clearAll(p)
+end
+
 -- supposed to respond with the "worst" reply (an error/etc)
 TestAllSync = {}
 
