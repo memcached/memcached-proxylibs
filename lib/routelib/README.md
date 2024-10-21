@@ -3,26 +3,12 @@
 This is a basic, extensible library for common use cases with the memcached
 proxy.
 
-For more information on the proxy: https://github.com/memcached/memcached/wiki/Proxy
+For more information on the proxy: https://docs.memcached.org/features/proxy/
+
+Please use the main documentation to learn about how to use the proxy. This
+README file exists as minimalist documentation.
 
 ## Quick Start
-
-Make sure memcached is built with the proxy. As of this writing version 1.6.29
-or newer is required.
-
-```sh
-./configure --enable-proxy
-make
-make test
-```
-
-You can also use Docker:
-```sh
-# this image expects a "config.lua" to be in the directory
-# you will need to start backend memcached's on your own!
-docker run -v /path/to/config/directory:/config:ro --publish 11211:11211 \
-    dormando/memcached:next-proxy
-```
 
 See the example configurations in: https://github.com/memcached/memcached-proxylibs/tree/main/lib/routelib/examples
 
@@ -55,10 +41,6 @@ In this configuration requests that start with "bar/" will use the backends
 described in pool "foo". Any key that does not start with "bar/" will instead
 be fetched from the "fallback" pool, which we added as the default route.
 
-NOTE: the proxy is simply a router. It does not handle starting/stopping of
-backend memcached instances. For this example you need a memcached listening
-on localhost port 11212
-
 Now, start the proxy: `memcached -o proxy_config=routelib.lua,proxy_arg=example.lua`
 
 You may also specify the path to lua libraries with environment variables: `LUA_PATH="/path/to/etc/?.lua" memcached -o proxy_config=routelib.lua,proxy_arg=example.lua``
@@ -74,7 +56,7 @@ Top level functions:
 
 For configuration description, see comments inline below. NOTE: we will
 frequently refer to:
-https://github.com/memcached/memcached/wiki/Proxy#api-documentation for
+https://docs.memcached.org/features/proxy/api-reference/ for
 descriptions of the full options available. This route library is a thin
 wrapper around the main proxy API.
 
