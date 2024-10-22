@@ -1,5 +1,8 @@
 -- The proxy supports TLS between itself and memcached nodes.
 -- For information on TLS in memcached see: https://docs.memcached.org/features/tls/
+--
+-- To enable support for backend TLS, the proxy _must_ be built with the
+-- `--enable-proxy-tls` configure argument.
 
 -- The proxy can be used as a TLS gateway if your native client does not
 -- support it.
