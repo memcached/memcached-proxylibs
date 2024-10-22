@@ -207,6 +207,10 @@ local function settings_parse(a)
         ["backend_flap_backoff_max"] = function(v)
             mcp.backend_flap_backoff_max(v)
         end,
+        ["backend_use_tls"] = function(v)
+            mcp.backend_use_tls(v)
+            mcp.init_tls()
+        end,
     }
 
     -- TODO: throw error if setting unknown
@@ -226,6 +230,7 @@ local function make_backend(name, host, o)
     -- override per-backend options if requested
     if o ~= nil then
         for k, v in pairs(o) do
+            dsay("backend using override: ", k, v)
             b[k] = v
         end
     end
@@ -268,6 +273,11 @@ local function make_backend(name, host, o)
         b.label = b.host .. ":" .. b.port
     end
 
+    if b.tls then
+        -- okay to call repeatedly
+        mcp.init_tls()
+    end
+
     return mcp.backend(b)
 end
 
@@ -293,7 +303,7 @@ local function pools_make(conf)
     -- TODO: some convenience functions for asserting?
     -- die more gracefully if backend list missing
     for _, backend in pairs(conf.backends) do
-        table.insert(s, make_backend(name, backend, sopts))
+        table.insert(s, make_backend(name, backend, bopts))
     end
 
     return mcp.pool(s, popts)

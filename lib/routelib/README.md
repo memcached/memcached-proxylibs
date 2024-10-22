@@ -214,7 +214,7 @@ routes{
 See: https://github.com/memcached/memcached-proxylibs/blob/main/lib/routelib/examples/customroute.lua
 
 For detail on how routes are executed and what objects are available, see the
-main wiki: https://github.com/memcached/memcached/wiki/Proxy
+main wiki: https://docs.memcached.org/features/proxy/
 
 ## Route handler reference
 

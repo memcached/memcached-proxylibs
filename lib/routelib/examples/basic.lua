@@ -1,7 +1,6 @@
 verbose(true)
-debug(true)
 
--- see https://github.com/memcached/memcached/wiki/Proxy for full details
+-- see https://docs.memcached.org/features/proxy/ for full details
 -- on various options.
 
 -- override proxy settings
