@@ -63,6 +63,10 @@ routes{
             miss = false,
             failover_count = 2,
         },
+        failovernocount = route_failover{
+            children = "set_arr",
+            miss = true,
+        },
         split = route_split{
             child_a = "foo",
             child_b = "bar",

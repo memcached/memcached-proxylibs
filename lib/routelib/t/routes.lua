@@ -280,6 +280,20 @@ function TestNoMissFailover:testAllError()
     clearAll(p)
 end
 
+TestNoCountFailover = {}
+
+function TestNoCountFailover:testAll()
+    -- Ensure we don't walk off the end of the handles array if not explicitly
+    -- given a failover count.
+    p:c_send("mg failovernocount/a t\r\n")
+    for x=1, 3 do
+        p:be_recv_c(x, "be received req")
+        p:be_send(x, "EN\r\n")
+    end
+    p:c_recv_be("EN\r\n")
+    clearAll(p)
+end
+
 -- TODO: add tests with some errors. I think it's fine though?
 TestSplit = {}
 
