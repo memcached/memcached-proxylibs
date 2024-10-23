@@ -1,3 +1,6 @@
+-- This library should originate from:
+-- https://github.com/memcached/memcached-proxylibs/tree/main/lib/routelib
+
 local STATS_MAX <const> = 1024
 
 local CMD_ID_MAP <const> = {
