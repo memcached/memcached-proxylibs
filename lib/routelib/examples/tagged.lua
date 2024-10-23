@@ -41,19 +41,15 @@ routes{
 -- this route tree is only executed if a client is connected to port 12052
 routes{
     tag = "b",
-    map = {
-        foo = route_allfastest{
-            children = { "bar" },
-        },
+    default = route_direct{
+        child = "bar"
     }
 }
 
 -- this route tree is only executed if a client is connected to port 12053
 routes{
     tag = "cccc",
-    map = {
-        foo = route_allfastest{
-            children = { "baz" },
-        },
+    default = route_direct{
+        child = "baz"
     }
 }

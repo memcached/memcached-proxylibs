@@ -1,4 +1,4 @@
-verbose(true)
+--verbose(true)
 
 -- see https://docs.memcached.org/features/proxy/ for full details
 -- on various options.

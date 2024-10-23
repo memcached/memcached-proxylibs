@@ -60,7 +60,7 @@ function route_myhello_f(rctx, a)
     -- now at runtime we will never make allocations (and thus never collect
     -- garbage)
     local msg = "SERVER_ERROR " .. a.msg .. "\r\n"
-    local stats_id = t.stats_id
+    local stats_id = a.stats_id
     local s = mcp.stat
     return function(r)
         if stats_id then

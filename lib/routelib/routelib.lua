@@ -504,7 +504,12 @@ local function routes_parse(c_in, pools)
 
     for tag, set in pairs(routes) do
         if set.map == nil and set.cmap == nil then
-            error("must pass map or cmap to a router")
+            if set.default then
+                -- FIXME: need an upstream fix to allow default-only routers
+                set.cmap = {}
+            else
+                error("must pass map or cmap to a router")
+            end
         end
 
         configure_router(set, pools, c_in)

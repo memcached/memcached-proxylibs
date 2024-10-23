@@ -1,5 +1,5 @@
-verbose(true)
-debug(true)
+--verbose(true)
+--debug(true)
 
 settings{
     backend_connect_timeout = 3,
