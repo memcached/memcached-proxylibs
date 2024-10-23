@@ -226,7 +226,7 @@ local function settings_parse(a)
 end
 
 local function make_backend(name, host, o)
-    local b = {}
+    local b = {port = "11211"}
     -- override per-backend options if requested
     if o ~= nil then
         for k, v in pairs(o) do
@@ -264,7 +264,7 @@ local function make_backend(name, host, o)
         end
 
         if b.host == nil then
-            error(host .. " is an invalid backend string")
+            error(host .. " is an invalid backend string. must be at least host:port")
         end
     end
 
@@ -502,6 +502,7 @@ end
 local function routes_parse(c_in, pools)
     local routes = c_in.routes
 
+    local found = false
     for tag, set in pairs(routes) do
         if set.map == nil and set.cmap == nil then
             if set.default then
@@ -513,6 +514,11 @@ local function routes_parse(c_in, pools)
         end
 
         configure_router(set, pools, c_in)
+        found = true
+    end
+
+    if not found then
+        error("missing routes{} section")
     end
 
     return { r = routes, p = pools }
