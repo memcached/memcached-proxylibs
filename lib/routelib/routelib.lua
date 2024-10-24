@@ -595,7 +595,10 @@ local function make_route(arg, ctx)
     -- resolve the named function to a real function from global
     local f = _G["route_" .. arg.f .. "_start"]
     -- create and return the funcgen object
-    return f(arg.a, ctx)
+    local fgen = mcp.funcgen_new()
+    f(arg.a, ctx, fgen)
+    -- FIXME: can we check if an fgen is marked as ready?
+    return fgen
 end
 
 -- create and return a full router object.
@@ -865,8 +868,7 @@ local function route_allfastest_f(rctx, arg)
 end
 
 -- copy request to all children, but return first response
-function route_allfastest_start(a, ctx)
-    local fgen = mcp.funcgen_new()
+function route_allfastest_start(a, ctx, fgen)
     dsay("starting an allfastest handler")
     local o = {}
     for _, child in pairs(a.children) do
@@ -874,7 +876,6 @@ function route_allfastest_start(a, ctx)
     end
 
     fgen:ready({ a = o, n = ctx:label(), f = route_allfastest_f })
-    return fgen
 end
 
 --
@@ -925,8 +926,7 @@ local function route_failover_f(rctx, arg)
     end
 end
 
-function route_failover_start(a, ctx)
-    local fgen = mcp.funcgen_new()
+function route_failover_start(a, ctx, fgen)
     local o = { t = {}, c = 0 }
     -- NOTE: if given a limit, we don't actually need handles for every pool.
     -- would be a nice small optimization to shuffle the list of children then
@@ -960,7 +960,6 @@ function route_failover_start(a, ctx)
     o.stats_id = a.stats_id
 
     fgen:ready({ a = o, n = ctx:label(), f = route_failover_f })
-    return fgen
 end
 
 --
@@ -989,15 +988,12 @@ end
 -- split route
 -- mostly exists just to test recursive functions
 -- should add options to do things like "copy N% of traffic from A to B"
-function route_split_start(a, ctx)
-    local fgen = mcp.funcgen_new()
+function route_split_start(a, ctx, fgen)
     local o = {}
     dsay("starting a split route handler")
     o.child_a = fgen:new_handle(a.child_a)
     o.child_b = fgen:new_handle(a.child_b)
     fgen:ready({ a = o, n = ctx:label(), f = route_split_f })
-
-    return fgen
 end
 
 --
@@ -1018,11 +1014,9 @@ local function route_direct_f(rctx, handle)
     end
 end
 
-function route_direct_start(a, ctx)
-    local fgen = mcp.funcgen_new()
+function route_direct_start(a, ctx, fgen)
     local handle = fgen:new_handle(a.child)
     fgen:ready({ a = handle, n = ctx:label(), f = route_direct_f })
-    return fgen
 end
 
 --
@@ -1060,9 +1054,8 @@ local function route_allsync_f(rctx, arg)
     end
 end
 
-function route_allsync_start(a, ctx)
+function route_allsync_start(a, ctx, fgen)
     dsay("starting an allsync route handler")
-    local fgen = mcp.funcgen_new()
     local o = {}
     for _, v in pairs(a.children) do
         table.insert(o, fgen:new_handle(v))
@@ -1073,8 +1066,6 @@ function route_allsync_start(a, ctx)
         n = ctx:label(),
         f = route_allsync_f,
     })
-
-    return fgen
 end
 
 --
@@ -1159,8 +1150,7 @@ local function route_zfailover_f(rctx, arg)
     end
 end
 
-function route_zfailover_start(a, ctx)
-    local fgen = mcp.funcgen_new()
+function route_zfailover_start(a, ctx, fgen)
     local o = { t = {}, c = 0 }
 
     -- our list of children is actually a map, so we build this differently
@@ -1176,7 +1166,6 @@ function route_zfailover_start(a, ctx)
     o.local_zone = a.local_zone
 
     fgen:ready({ a = o, n = ctx:label(), f = route_zfailover_f })
-    return fgen
 end
 
 --
@@ -1249,9 +1238,8 @@ local function route_ttl_f(rctx, arg)
     end
 end
 
-function route_ttl_start(a, ctx)
+function route_ttl_start(a, ctx, fgen)
     -- if ctx:cmd() == mcp.CMD_ANY_STORAGE do etc else etc
-    local fgen = mcp.funcgen_new()
     local o = { ttl = a.ttl }
     o.handle = fgen:new_handle(a.child)
     if ctx:cmd() ~= mcp.CMD_ANY_STORAGE then
@@ -1263,8 +1251,6 @@ function route_ttl_start(a, ctx)
         n = ctx:label(),
         f = route_ttl_f,
     })
-    return fgen
-
 end
 
 --

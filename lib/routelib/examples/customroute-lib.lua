@@ -40,14 +40,11 @@ end
 
 -- called once during the worker configuration phase: configures and returns a
 -- generator.
-function route_myhello_start(a, ctx)
-    local fgen = mcp.funcgen_new()
+function route_myhello_start(a, ctx, fgen)
     -- not adding any children for this function.
 
+    -- configure the function generator
     fgen:ready({ a = a, n = ctx:label(), f = route_myhello_f })
-
-    -- make sure to return the generator we just made
-    return fgen
 end
 
 -- called once per "query slot" needed to satisfy parallel requests.
