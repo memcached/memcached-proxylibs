@@ -910,18 +910,32 @@ local function route_failover_f(rctx, arg)
 
     return function(r)
         local res = nil
+        local rmiss = nil -- flag if we any children returned a miss
         for i=1, limit do
             res = rctx:enqueue_and_wait(r, t[i])
             if i > 1 and s then
                 -- increment the retries counter
                 s(s_id, 1)
             end
-            if (miss == true and res:hit()) or (miss == false and res:ok()) then
+
+            -- process result
+            if res:hit() then
                 return res
+            elseif res:ok() then
+                if miss == true then
+                    -- save the ok/miss result and continue looping (treat miss as a failure)
+                    rmiss = res
+                else
+                    -- return ok/miss (treat miss as a good result)
+                    return res
+                end
             end
         end
 
-        -- didn't get what we want, return the final one.
+        -- didn't get what we want, return either miss (if any) or last error
+        if rmiss then
+            return rmiss
+        end
         return res
     end
 end
