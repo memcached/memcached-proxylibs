@@ -201,6 +201,26 @@ function TestMissFailover:testFailure()
     clearAll(p)
 end
 
+function TestMissFailover:testBestResult()
+    p:c_send("mg failover/a t\r\n")
+    p:be_recv_c(1, "first be got miss")
+    p:be_send(1, "EN\r\n")
+    p:be_recv_c(2, "second be got error")
+    p:be_send(2, "SERVER_ERROR last error\r\n")
+    p:c_recv("EN\r\n") -- The client should receive "best result" out of two, which is miss-response from the first be
+    clearAll(p)
+end
+
+function TestMissFailover:testLastError()
+    p:c_send("mg failover/a t\r\n")
+    p:be_recv_c(1, "first be got error-1")
+    p:be_send(1, "SERVER_ERROR error-1\r\n")
+    p:be_recv_c(2, "second be got error-2")
+    p:be_send(2, "SERVER_ERROR error-2\r\n")
+    p:c_recv("SERVER_ERROR error-2\r\n") -- The client should receive the last error if all bes return errors
+    clearAll(p)
+end
+
 -- we have three pools configured but set failover limit to 2
 TestMissFailoverPSET = {}
 
