@@ -847,18 +847,24 @@ end
 
 -- so many layers of generation :(
 local function route_allfastest_f(rctx, arg)
-    local mode = mcp.WAIT_OK
+    local mode = mcp.WAIT_OK -- wait until first non-error
+    if arg.miss then
+        mode = mcp.WAIT_GOOD -- wait until first good or until all childrend return
+    end
+
     dsay("generating an allfastest function")
     return function(r)
         rctx:enqueue(r, arg)
         local done = rctx:wait_cond(1, mode)
         local final = nil
-        -- return first non-error.
+        -- return first good result, or non-error (if nothing good returned), or last error
         for x=1, #arg do
             local res, mode = rctx:result(arg[x])
-            if mode == mcp.RES_OK or mode == mcp.RES_GOOD then
+            if mode == mcp.RES_GOOD then
                 return res
-            else
+            elseif mode == mcp.RES_OK then
+                final = res
+            elseif final == nil or not final:ok() then
                 final = res
             end
         end
@@ -875,6 +881,7 @@ function route_allfastest_start(a, ctx, fgen)
         table.insert(o, fgen:new_handle(child))
     end
 
+    o.miss = a.miss
     fgen:ready({ a = o, n = ctx:label(), f = route_allfastest_f })
 end
 
@@ -910,7 +917,7 @@ local function route_failover_f(rctx, arg)
 
     return function(r)
         local res = nil
-        local rmiss = nil -- flag if we any children returned a miss
+        local rmiss = nil -- flag if any children returned a miss
         for i=1, limit do
             res = rctx:enqueue_and_wait(r, t[i])
             if i > 1 and s then
