@@ -80,7 +80,12 @@ routes{
             },
         },
         allfastest = route_allfastest{
-            children = { "foo", "bar", "baz" }
+            children = { "foo", "bar", "baz" },
+            miss = true,
+        },
+        allfastestnomiss = route_allfastest{
+            children = { "foo", "bar", "baz" },
+            miss = false,
         },
         allsync = route_allsync{
             children = { "foo", "bar", "baz" }
