@@ -425,7 +425,7 @@ function TestAllFastest:testIgnoreMissAndErr()
     p:c_send("mg allfastest/b t\r\n")
     p:be_recv_c({1, 2, 3}, "all three got request")
     p:be_send(1, "SERVER_ERROR too many potatos\r\n")
-    p:be_send(2, "END\r\n") -- should ignore the "miss" response with miss==true flag
+    p:be_send(2, "EN\r\n") -- should ignore "miss" response when miss==true flag is set
     p:be_send(3, "HD t3\r\n")
     p:c_recv("HD t3\r\n")
     clearAll(p)
@@ -435,9 +435,9 @@ function TestAllFastest:testReturnMiss()
     p:c_send("mg allfastestnomiss/b t\r\n")
     p:be_recv_c({1, 2, 3}, "all three got request")
     p:be_send(1, "SERVER_ERROR too many potatos\r\n")
-    p:be_send(2, "END\r\n") -- should return "miss" response with miss==false flag
+    p:be_send(2, "EN\r\n") -- should return "miss" response when miss==false
     p:be_send(3, "HD t3\r\n")
-    p:c_recv("END\r\n")
+    p:c_recv("EN\r\n")
     clearAll(p)
 end
 
@@ -456,7 +456,7 @@ function TestAllFastest:testMiddleHit()
     p:be_recv_c({1, 2, 3}, "all three got request")
     p:be_send(1, "SERVER_ERROR one\r\n")
     p:be_send(2, "HD t5\r\n")
-    p:be_send(3, "SERVER_ERROR final\r\n")
+    p:be_send(3, "EN\r\n")
     p:c_recv("HD t5\r\n")
     clearAll(p)
 end
@@ -465,9 +465,9 @@ function TestAllFastest:testMiddleMiss()
     p:c_send("mg allfastest/d t\r\n")
     p:be_recv_c({1, 2, 3}, "all three got request")
     p:be_send(1, "SERVER_ERROR one\r\n")
-    p:be_send(2, "END\r\n")
+    p:be_send(2, "EN\r\n")
     p:be_send(3, "SERVER_ERROR final\r\n")
-    p:c_recv("END\r\n")
+    p:c_recv("EN\r\n")
     clearAll(p)
 end
 
@@ -475,9 +475,9 @@ function TestAllFastest:testNoMissIgnoreLastHit()
     p:c_send("mg allfastestnomiss/d t\r\n")
     p:be_recv_c({1, 2, 3}, "all three got request")
     p:be_send(1, "SERVER_ERROR one\r\n")
-    p:be_send(2, "END\r\n")
+    p:be_send(2, "EN\r\n") -- if miss==false, the first ok is returned ignoring subsequent hits
     p:be_send(3, "HD t5\r\n")
-    p:c_recv("END\r\n") -- with miss==false, the first ok is returned ignoring subsequent hits
+    p:c_recv("EN\r\n")
     clearAll(p)
 end
 

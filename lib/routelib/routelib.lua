@@ -849,7 +849,7 @@ end
 local function route_allfastest_f(rctx, arg)
     local mode = mcp.WAIT_OK -- wait until first non-error
     if arg.miss then
-        mode = mcp.WAIT_GOOD -- wait until first good or until all childrend return
+        mode = mcp.WAIT_GOOD -- wait until first good or until all children return
     end
 
     dsay("generating an allfastest function")
