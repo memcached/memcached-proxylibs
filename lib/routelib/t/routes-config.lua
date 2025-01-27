@@ -95,11 +95,6 @@ routes{
             stats = true,
             miss = true,
         },
-        zfailovernomiss = route_zfailover{
-            children = "set_all",
-            stats = true,
-            miss = false,
-        },
         -- used to test if each backend has a clear pipeline
         direct_a = route_direct{
             child = "foo",

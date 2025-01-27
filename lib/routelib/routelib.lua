@@ -1155,17 +1155,15 @@ local function route_zfailover_f(rctx, arg)
         rctx:enqueue(r, far)
         rctx:wait_cond(farcount, mode)
 
-        -- wait for a good result if miss==true
-        -- if miss==false, return OK or GOOD, whatever comes first
-        -- return last error if no good or ok comes in
+        -- look for a good result, else any OK, else any result.
         local final = nil
         for x=1, #far do
             local res, tag = rctx:result(far[x])
             if tag == mcp.RES_GOOD then
                 return res
-            elseif tag == mcp.RES_OK and miss == false then
-                return res
-            elseif final == nil or not final:ok() then
+            elseif tag == mcp.RES_OK then
+                final = res
+            elseif final ~= nil then
                 final = res
             end
         end

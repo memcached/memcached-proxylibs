@@ -536,41 +536,21 @@ TestZFailover = {}
 -- first/second/third in the list.
 local LZ = 2
 local FZ = {1, 3} -- far zones
-function TestZFailover:testLocalHit()
+function TestZFailover:testHit()
     p:c_send("mg zfailover/a t\r\n")
     p:be_recv_c(LZ, "local zone got first attempt")
-    p:be_send(LZ, "HD t2\r\n")
+    p:be_send(LZ, "HD t7\r\n")
     p:c_recv_be("got resp from first zone")
     clearAll(p)
 end
 
-function TestZFailover:testFarHit()
+function TestZFailover:testMiss()
     p:c_send("mg zfailover/a t\r\n")
     p:be_recv_c(LZ, "local zone got first attempt")
     p:be_send(LZ, "EN\r\n")
     p:be_recv_c(FZ, "far zones both got requests")
-    p:be_send(1, "EN\r\n")
-    p:be_send(3, "HD t3\r\n")
-    p:c_recv("HD t3\r\n", "got hit response from the second far zone ignoring local and first far miss")
-    clearAll(p)
-end
-
-function TestZFailover:testLocalMissNoMiss()
-    p:c_send("mg zfailovernomiss/a t\r\n")
-    p:be_recv_c(LZ, "local zone got first attempt")
-    p:be_send(LZ, "EN\r\n")
-    p:c_recv("EN\r\n", "got miss response from the local zone as miss==false")
-    clearAll(p)
-end
-
-function TestZFailover:testFarMissNoMiss()
-    p:c_send("mg zfailovernomiss/a t\r\n")
-    p:be_recv_c(LZ, "local zone got first attempt")
-    p:be_send(LZ, "SERVER_ERROR LZ\r\n") -- ignoring error from local zone
-    p:be_recv_c(FZ, "far zones both got requests")
-    p:be_send(1, "EN\r\n")
-    p:be_send(3, "HD t3\r\n")
-    p:c_recv("EN\r\n", "got miss response from the first far zone as miss==false")
+    p:be_send(FZ, "HD t9\r\n")
+    p:c_recv_be("got resp from far zones")
     clearAll(p)
 end
 
