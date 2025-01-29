@@ -224,6 +224,8 @@ local function settings_parse(a)
             func(value)
         elseif setting == "pool_options" then
             M.pool_options = value
+        elseif setting == "backend_options" then
+            M.backend_options = value
         end
     end
 end
@@ -301,7 +303,21 @@ local function pools_make(conf)
         end
     end
 
-    local bopts = conf.backend_options
+    local bopts = {}
+    -- seed global overrides
+    if M.backend_options then
+        for k, v in pairs(M.backend_options) do
+            dsay("backend option using global override:", k, v)
+            bopts[k] = v
+        end
+    end
+    if conf.backend_options then
+        for k, v in pairs(conf.backend_options) do
+            dsay("backend option using local override:", k, v)
+            bopts[k] = v
+        end
+    end
+
     local s = {}
     -- TODO: some convenience functions for asserting?
     -- die more gracefully if backend list missing
