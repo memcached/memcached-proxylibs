@@ -1278,6 +1278,35 @@ end
 -- route_ttl end
 --
 
+--
+-- route_null start
+--
+
+function route_null_conf(t, arg)
+    return t
+end
+
+function route_null_start(a, ctx, fgen)
+    local mut = mcp.res_mutator_new(
+        { t = "resnull", idx = 1 }
+    )
+
+    fgen:ready({
+        n = ctx:label(),
+        u = 1,
+        f = function(rctx)
+            local nres = rctx:response_new()
+            return function(r)
+                mut(nres, r)
+                return nres
+            end
+        end
+    })
+end
+
+--
+-- route_null end
+--
 
 register_route_handlers({
     "failover",
@@ -1287,4 +1316,5 @@ register_route_handlers({
     "direct",
     "zfailover",
     "ttl",
+    "null",
 })

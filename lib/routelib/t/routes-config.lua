@@ -117,6 +117,7 @@ routes{
             cas = route_ttl{ ttl = 45, child = "foo" },
         },
         ttl = route_ttl{ ttl = 45, child = "foo" },
+        null = route_null{},
     },
     cmap = {
         mg = route_direct{ child = "baz" },

@@ -42,6 +42,28 @@ function clearAll(p)
     p:clear()
 end
 
+TestNULL = {}
+
+function TestNULL:testBasic()
+    -- TODO: fill all commands.
+    local expect = {
+        { "get null/foo\r\n", "END\r\n" },
+        { "set null/foo 0 0 2\r\nhi\r\n", "NOT_STORED\r\n" },
+        { "delete null/foo\r\n", "NOT_FOUND\r\n" },
+        { "mg null/foo\r\n", "EN\r\n" },
+        { "ms null/foo 2\r\nhi\r\n", "NS\r\n" },
+        { "md null/foo\r\n", "NF\r\n" },
+        { "ma null/foo\r\n", "NF\r\n" },
+    }
+
+    for _, e in ipairs(expect) do
+        p:c_send(e[1])
+        p:c_recv(e[2])
+    end
+
+    clearAll(p)
+end
+
 TestTTL = {}
 
 -- test twice in here: once for the submap and once for the non-map
