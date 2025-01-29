@@ -99,10 +99,6 @@ function settings(a)
 end
 
 function pools(a)
-    if M.is_debug then
-        print("pools config:")
-        print(dump_pretty(a))
-    end
     -- merge the list so pools{} can be called multiple times
     local p = M.c_in.pools
     for k, v in pairs(a) do
@@ -111,8 +107,6 @@ function pools(a)
 end
 
 function routes(a)
-    dsay("routes:")
-    dsay(dump_pretty(a))
     if a["conf"] == nil then
         a["conf"] = {}
     end
@@ -772,6 +766,19 @@ end
 -- mcp_config_pools executes from the configuration thread
 -- mcp_config_routes executes from each worker thread
 
+function mcp_config_dump_state(c)
+    if M.is_debug then
+        dsay("======== GLOBAL SETTINGS CONFIG ========")
+        dsay(dump_pretty(c.settings))
+
+        dsay("======== POOLS CONFIG ========")
+        dsay(dump_pretty(c.pools))
+
+        dsay("======== ROUTES CONFIG ========")
+        dsay(dump_pretty(c.routes))
+    end
+end
+
 function mcp_config_pools()
     load_userconfig(mcp.start_arg)
     dsay("=== mcp_config_pools: start ===")
@@ -781,6 +788,7 @@ function mcp_config_pools()
     if M.c_in.settings then
         settings_parse(M.c_in.settings)
     end
+    mcp_config_dump_state(M.c_in)
 
     -- Step 1) create pool objects
     local pools = pools_parse(M.c_in.pools)
