@@ -901,6 +901,11 @@ function route_failover_conf(t, ctx)
         end
         t.stats_id = ctx:get_stats_id(name)
     end
+
+    if t.local_zone ~= nil then
+        zone = ctx:local_zone()
+    end
+
     return t
 end
 
@@ -920,6 +925,7 @@ local function route_failover_f(rctx, arg)
         local rmiss = nil -- flag if any children returned a miss
         for i=1, limit do
             res = rctx:enqueue_and_wait(r, t[i])
+
             if i > 1 and s then
                 -- increment the retries counter
                 s(s_id, 1)
@@ -949,16 +955,28 @@ end
 
 function route_failover_start(a, ctx, fgen)
     local o = { t = {}, c = 0 }
-    -- NOTE: if given a limit, we don't actually need handles for every pool.
-    -- would be a nice small optimization to shuffle the list of children then
-    -- only grab N entries.
-    -- Not doing this _right now_ because I'm not confident children is an
-    -- array or not.
-    for _, child in pairs(a.children) do
-        table.insert(o.t, fgen:new_handle(child))
+
+    -- We have a local zone defined _and_ the children table seems to have
+    -- this zone defined. We must try this zone first.
+    local zone = a.local_zone
+    if zone ~= nil and a.children[zone] ~= nil then
+        table.insert(o.t, fgen:new_handle(a.children[zone]))
         o.c = o.c + 1
+        for name, child in pairs(a.children) do
+            if zone ~= name then
+                table.insert(o.t, fgen:new_handle(child))
+                o.c = o.c + 1
+            end
+        end
+        o.zone = zone
+    else
+        for _, child in pairs(a.children) do
+            table.insert(o.t, fgen:new_handle(child))
+            o.c = o.c + 1
+        end
     end
 
+    -- TODO: should zone cause shuffle to be ignored?
     if a.shuffle then
         -- shuffle the handle list
         for i=#o.t, 2, -1 do
@@ -1091,6 +1109,49 @@ end
 
 --
 -- route_allsync end
+--
+
+--
+-- route_allasync start
+--
+
+function route_allasync_conf(t)
+    return t
+end
+
+local function route_allasync_f(rctx, arg)
+    local handles = arg.h
+    local mut = arg.m
+    local nres = rctx:response_new()
+
+    return function(r)
+        rctx:enqueue(r, handles)
+        rctx:wait_cond(0) -- do not wait
+        mut(nres, r) -- return a "NULL" response
+        return nres
+    end
+end
+
+function route_allasync_start(a, ctx, fgen)
+    dsay("starting an allasync route handler")
+    local o = {}
+    for _, v in pairs(a.children) do
+        table.insert(o, fgen:new_handle(v))
+    end
+    local mut = mcp.res_mutator_new(
+        { t = "resnull", idx = 1 }
+    )
+
+    fgen:ready({
+        a = { h = o, m = mut },
+        u = 1,
+        n = ctx:label(),
+        f = route_allasync_f,
+    })
+end
+
+--
+-- route_allasync end
 --
 
 --

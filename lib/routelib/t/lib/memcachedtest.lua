@@ -29,14 +29,14 @@ end
 -- if it's less convenient in the future it can change :P
 local function _poll_read_n(fdlist, timeout)
     local fds = {}
-    for fd, _ in ipairs(fdlist) do
+    for fd, _ in pairs(fdlist) do
         fds[fd] = {events={IN=true}}
     end
     local ready = poll.poll(fds, timeout)
 
     if ready then
         local res = {}
-        for fd, v in ipairs(fds) do
+        for fd, v in pairs(fds) do
             if v.revents and v.revents.IN then
                 table.insert(res, fd)
             end

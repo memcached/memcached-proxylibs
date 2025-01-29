@@ -1,6 +1,6 @@
 --verbose(true)
 --debug(true)
-local_zone("zbar")
+--local_zone("zbar")
 
 settings{
     backend_connect_timeout = 3,
@@ -67,6 +67,10 @@ routes{
             children = "set_arr",
             miss = true,
         },
+        failoverzone = route_failover{
+            children = "set_all",
+            local_zone = "zbar",
+        },
         split = route_split{
             child_a = "foo",
             child_b = "bar",
@@ -91,6 +95,7 @@ routes{
             children = { "foo", "bar", "baz" }
         },
         zfailover = route_zfailover{
+            local_zone = "zbar",
             children = "set_all",
             stats = true,
             miss = true,

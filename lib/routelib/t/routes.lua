@@ -552,12 +552,47 @@ function TestAllSync:testError()
     clearAll(p)
 end
 
-TestZFailover = {}
-
+TestFailoverZone = {}
 -- local zone is set to 2 to ensure we don't just send to the
 -- first/second/third in the list.
 local LZ = 2
 local FZ = {1, 3} -- far zones
+
+function TestFailoverZone:testHit()
+    p:c_send("mg failoverzone/a t\r\n")
+    p:be_recv_c(LZ, "local zone got first attempt")
+    p:be_send(LZ, "HD t3\r\n")
+    p:c_recv_be("got resp from first zone")
+    clearAll(p)
+end
+
+-- FIXME: p:be_wait sucks. fucking fix it.
+function TestFailoverZone:testErr()
+    p:c_send("mg failoverzone/b t\r\n")
+    p:be_recv_c(LZ, "local zone got first attempt")
+    p:be_send(LZ, "SERVER_ERROR skip local\r\n")
+    local mFZ = {1, 3}
+    local seen = false
+    for x=1, 2 do
+        local bes = p:be_wait(mFZ, 1)
+        for _, v in pairs(bes) do
+            local be = mFZ[v]
+            p:be_recv_c(be, "far zone got request")
+            if seen then
+                p:be_send(be, "HD t3\r\n")
+            else
+                p:be_send(be, "SERVER_ERROR skip first far\r\n")
+                seen = true
+            end
+        end
+    end
+
+    p:c_recv("HD t3\r\n", "got resp from far zone")
+    clearAll(p)
+end
+
+TestZFailover = {}
+
 function TestZFailover:testHit()
     p:c_send("mg zfailover/a t\r\n")
     p:be_recv_c(LZ, "local zone got first attempt")
