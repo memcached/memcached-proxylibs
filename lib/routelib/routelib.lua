@@ -42,6 +42,21 @@ local function dump(o)
    end
 end
 
+local function dump_pretty(o, indent)
+    indent = indent or ""
+    if type(o) == 'table' then
+        local s = '{\n'
+        local next_indent = indent .. "    "
+        for k,v in pairs(o) do
+            if type(k) ~= 'number' then k = '"'..k..'"' end
+            s = s .. next_indent .. '['..k..'] = ' .. dump_pretty(v, next_indent) .. ',\n'
+        end
+        return s .. indent .. '}'
+    else
+        return tostring(o)
+    end
+end
+
 -- classes for typing.
 -- NOTE: metatable classes do not cross VM's, so they may only be used in the
 -- same VM they were assigned (pools or routes)
@@ -86,7 +101,7 @@ end
 function pools(a)
     if M.is_debug then
         print("pools config:")
-        print(dump(a))
+        print(dump_pretty(a))
     end
     -- merge the list so pools{} can be called multiple times
     local p = M.c_in.pools
@@ -97,7 +112,7 @@ end
 
 function routes(a)
     dsay("routes:")
-    dsay(dump(a))
+    dsay(dump_pretty(a))
     if a["conf"] == nil then
         a["conf"] = {}
     end
