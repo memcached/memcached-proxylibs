@@ -317,6 +317,9 @@ end
 local function pools_parse(a)
     local pools = {}
     for name, conf in pairs(a) do
+        if name == "internal" then
+            error("pool name 'internal' is reserved, please use another name")
+        end
         -- Check if conf is a pool set or single pool.
         -- Add result to top level pools[name] either way.
         if string.find(name, "^set_") ~= nil then
@@ -627,6 +630,11 @@ local function make_router(set, pools)
         get_child = function(self, child)
             if type(child) ~= "string" then
                 error("invalid child given to route handler: " .. type(child))
+            end
+
+            -- shortcut for the process-internal cache.
+            if child == "internal" then
+                return mcp.internal_handler
             end
 
             -- if "^set_words_etc" then special parse

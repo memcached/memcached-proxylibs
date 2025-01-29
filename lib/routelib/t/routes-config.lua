@@ -123,6 +123,9 @@ routes{
         },
         ttl = route_ttl{ ttl = 45, child = "foo" },
         null = route_null{},
+        internal = route_direct{
+            child = "internal",
+        },
     },
     cmap = {
         mg = route_direct{ child = "baz" },

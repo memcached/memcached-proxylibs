@@ -611,4 +611,21 @@ function TestZFailover:testMiss()
     clearAll(p)
 end
 
+TestInternal = {}
+
+-- Don't need extensive tests for internal since those are in the main source.
+function TestInternal:testBasic()
+    -- ensure we can talk to the server without answering from a backend
+    -- ourselves.
+    p:c_send("mg internal/a t\r\n")
+    p:c_recv("EN\r\n")
+
+    p:c_send("ms internal/a 2 F50\r\nhi\r\n")
+    p:c_recv("HD\r\n")
+
+    p:c_send("mg internal/a f\r\n")
+    p:c_recv("HD f50\r\n")
+    clearAll(p)
+end
+
 runTests()
