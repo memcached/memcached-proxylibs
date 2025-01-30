@@ -126,6 +126,12 @@ routes{
         internal = route_direct{
             child = "internal",
         },
+        ratelim = route_ratelim{
+            child = "foo",
+            limit = 10,
+            fillrate = 4,
+            tickrate = 20000,
+        },
     },
     cmap = {
         mg = route_direct{ child = "baz" },

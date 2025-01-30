@@ -1390,7 +1390,7 @@ end
 -- route_null start
 --
 
-function route_null_conf(t, arg)
+function route_null_conf(t)
     return t
 end
 
@@ -1416,6 +1416,82 @@ end
 -- route_null end
 --
 
+--
+-- route_ratelim start
+--
+
+-- TODO:
+-- arg to use bytes of req/res instead of request rate.
+function route_ratelim_conf(t, arg)
+    if t.stats then
+        local name = ctx:label() .. "_limits"
+        if t.stats_name then
+            name = t.stats_name .. "_limits"
+        end
+        t.stats_id = ctx:get_stats_id(name)
+    end
+
+    if t.tickrate == nil then
+        t.tickrate = 1000
+    end
+
+    if t.limit == nil then
+        error("must specify limit to route_ratelim")
+    end
+    if t.fillrate == nil then
+        error("must specify fillrate to route_ratelim")
+    end
+
+    if t.global then
+        local tbf_global = mcp.ratelim_global_tbf({
+            limit = t.limit,
+            fillrate = t.fillrate,
+            tickrate = t.tickrate,
+        })
+        t.tbf_global = tbf_global
+    end
+    return t
+end
+
+local function route_ratelim_f(rctx, o)
+    local rlim = o.rlim
+    local h = o.handle
+
+    return function(r)
+        if rlim(1) then
+            return rctx:enqueue_and_wait(r, h)
+        else
+            -- FIXME: use nullroute res?
+            return "SERVER_ERROR slow down\r\n"
+        end
+    end
+end
+
+function route_ratelim_start(a, ctx, fgen)
+    local o = {}
+
+    o.handle = fgen:new_handle(a.child)
+    if a.global then
+        o.rlim = a.tbf_global
+    else
+        o.rlim = mcp.ratelim_tbf({
+            limit = a.limit,
+            fillrate = a.fillrate,
+            tickrate = a.tickrate,
+        })
+    end
+
+    fgen:ready({
+        a = o,
+        n = ctx:label(),
+        f = route_ratelim_f
+    })
+end
+
+--
+-- route_ratelim end
+--
+
 register_route_handlers({
     "failover",
     "allfastest",
@@ -1425,4 +1501,5 @@ register_route_handlers({
     "zfailover",
     "ttl",
     "null",
+    "ratelim"
 })
