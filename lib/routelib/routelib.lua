@@ -124,7 +124,34 @@ function find_pools(m)
 end
 
 function local_zone(zone)
-    dsay(zone)
+    if zone then
+        dsay("=== local zone: ", zone)
+        M.c_in.local_zone = zone
+    else
+        return M.c_in.local_zone
+    end
+end
+
+function local_zone_from_env(envname)
+    local zone = os.getenv(envname)
+    if zone == nil then
+        error("failed to get local zone from environment variable: " .. envname)
+    end
+    dsay("=== local zone: ", zone)
+    M.c_in.local_zone = zone
+end
+
+function local_zone_from_file(filename)
+    local f, err, errno = io.open(filename, "r")
+    if f == nil then
+        error("failure while opening local zone file: " .. filename .. " " .. err)
+    end
+    local zone = f:read("l")
+    f:close()
+    if zone == nil then
+        error("failed to read local zone from file: " .. filename)
+    end
+    dsay("=== local zone: ", zone)
     M.c_in.local_zone = zone
 end
 

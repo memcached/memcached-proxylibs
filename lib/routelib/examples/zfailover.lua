@@ -4,6 +4,8 @@ debug(true)
 -- TODO: example of pulling from envvar
 -- set our local zone for the file.
 local_zone("foo")
+--local_zone_from_env("MCZONE")
+--local_zone_from_file("./zonefile.txt")
 
 -- "z" versions of route handlers are "zone" aware. If given a set of pools
 -- where one is "near" to the router and others are "far", it will attempt to
