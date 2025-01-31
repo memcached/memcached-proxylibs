@@ -1418,6 +1418,7 @@ end
 
 --
 -- route_ratelim start
+-- NOTE: EXPERIMENTAL API. MAY CHANGE.
 --
 
 -- TODO:
@@ -1456,13 +1457,27 @@ end
 local function route_ratelim_f(rctx, o)
     local rlim = o.rlim
     local h = o.handle
+    local null = o.null
+    local nres = rctx:response_new()
 
-    return function(r)
-        if rlim(1) then
-            return rctx:enqueue_and_wait(r, h)
-        else
-            -- FIXME: use nullroute res?
-            return "SERVER_ERROR slow down\r\n"
+    if o.fail_until_limit then
+        -- invert the rate limiter: disallow requests up until this rate.
+        return function(r)
+            if rlim(1) then
+                null(nres, r)
+                return nres
+            else
+                return rctx:enqueue_and_wait(r, h)
+            end
+        end
+    else
+        return function(r)
+            if rlim(1) then
+                return rctx:enqueue_and_wait(r, h)
+            else
+                -- TODO: allow specifying a "SERVER_ERROR" instead?
+                return null(r)
+            end
         end
     end
 end
@@ -1480,9 +1495,14 @@ function route_ratelim_start(a, ctx, fgen)
             tickrate = a.tickrate,
         })
     end
+    o.null = mcp.res_mutator_new(
+        { t = "resnull", idx = 1 }
+    )
+    o.fail_until_limit = a.fail_until_limit
 
     fgen:ready({
         a = o,
+        u = 1,
         n = ctx:label(),
         f = route_ratelim_f
     })

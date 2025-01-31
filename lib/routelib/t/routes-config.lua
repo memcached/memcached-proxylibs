@@ -132,6 +132,14 @@ routes{
             fillrate = 4,
             tickrate = 20000,
         },
+        rateliminv = route_ratelim{
+            child = "foo",
+            limit = 10,
+            fillrate = 4,
+            tickrate = 20000,
+            fail_until_limit = true,
+        },
+
     },
     cmap = {
         mg = route_direct{ child = "baz" },
