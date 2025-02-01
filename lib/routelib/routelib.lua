@@ -983,10 +983,14 @@ function route_failover_conf(t, ctx)
     return t
 end
 
+-- TODO: if final res is due to a timeout, we could return a more descriptive
+-- SERVER_ERROR
+-- .. also add another stats counter for timeout
 local function route_failover_f(rctx, arg)
     local limit = arg.limit
     local t = arg.t
     local miss = arg.miss
+    local wait = arg.wait
     local s = nil
     local s_id = 0
     if arg.stats_id then
@@ -998,7 +1002,13 @@ local function route_failover_f(rctx, arg)
         local res = nil
         local rmiss = nil -- flag if any children returned a miss
         for i=1, limit do
-            res = rctx:enqueue_and_wait(r, t[i])
+            if wait then
+                -- can return a nil res
+                -- lua has no 'continue'
+                res = rctx:enqueue_and_wait(r, t[i], wait)
+            else
+                res = rctx:enqueue_and_wait(r, t[i])
+            end
 
             if i > 1 and s then
                 -- increment the retries counter
@@ -1006,7 +1016,9 @@ local function route_failover_f(rctx, arg)
             end
 
             -- process result
-            if res:hit() then
+            if res == nil then
+                -- do nothing.
+            elseif res:hit() then
                 return res
             elseif res:ok() then
                 if miss == true then
@@ -1071,6 +1083,7 @@ function route_failover_start(a, ctx, fgen)
         o.limit = hcount
     end
     o.stats_id = a.stats_id
+    o.wait = a.wait
 
     fgen:ready({ a = o, n = ctx:label(), f = route_failover_f })
 end
