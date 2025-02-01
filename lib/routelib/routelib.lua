@@ -1563,6 +1563,38 @@ end
 -- route_ratelim end
 --
 
+--
+-- route_random start
+--
+
+function route_random_conf(t)
+    return t
+end
+
+function route_random_start(a, ctx, fgen)
+    local handles = {}
+    local count = 0
+
+    for k, child in pairs(a.children) do
+        table.insert(handles, fgen:new_handle(child))
+        count = count + 1
+    end
+
+    fgen:ready({
+        n = ctx:label(),
+        f = function(rctx)
+            return function(r)
+                local pool = handles[math.random(count)]
+                return rctx:enqueue_and_wait(r, pool)
+            end
+        end
+    })
+end
+
+--
+-- route_random end
+--
+
 register_route_handlers({
     "failover",
     "allfastest",
@@ -1572,5 +1604,6 @@ register_route_handlers({
     "zfailover",
     "ttl",
     "null",
-    "ratelim"
+    "ratelim",
+    "random"
 })

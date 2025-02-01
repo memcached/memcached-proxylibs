@@ -139,7 +139,9 @@ routes{
             tickrate = 20000,
             fail_until_limit = true,
         },
-
+        random = route_random{
+            children = "set_arr"
+        },
     },
     cmap = {
         mg = route_direct{ child = "baz" },
