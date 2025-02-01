@@ -919,19 +919,25 @@ function route_allfastest_conf(t)
     return t
 end
 
--- so many layers of generation :(
 local function route_allfastest_f(rctx, arg)
     local mode = mcp.WAIT_OK -- wait until first non-error
     if arg.miss then
         mode = mcp.WAIT_GOOD -- wait until first good or until all children return
     end
+    local wait = arg.wait
 
     dsay("generating an allfastest function")
     return function(r)
         rctx:enqueue(r, arg)
-        local done = rctx:wait_cond(1, mode)
+        if wait then
+            -- return best result received after 'wait' time elapsed.
+            local done = rctx:wait_cond(1, mode, wait)
+        else
+            local done = rctx:wait_cond(1, mode)
+        end
         local final = nil
         -- return first good result, or non-error (if nothing good returned), or last error
+        -- TODO: convert to rctx:best_result(arg)
         for x=1, #arg do
             local res, tag = rctx:result(arg[x])
             if tag == mcp.RES_GOOD then
@@ -948,6 +954,10 @@ local function route_allfastest_f(rctx, arg)
 end
 
 -- copy request to all children, but return first response
+-- FIXME: fix the table in here:
+-- - using o as both an array and hash table and iterating over it in the main
+-- function, can be confusing for users and potentially harmful on editing
+-- later. Instead put the child handles into a sub-table.
 function route_allfastest_start(a, ctx, fgen)
     dsay("starting an allfastest handler")
     local o = {}
@@ -956,6 +966,7 @@ function route_allfastest_start(a, ctx, fgen)
     end
 
     o.miss = a.miss
+    o.wait = a.wait
     fgen:ready({ a = o, n = ctx:label(), f = route_allfastest_f })
 end
 
