@@ -1,16 +1,23 @@
 verbose(true)
 debug(true)
 
+-- A route handler can accept another route handler for any child type entry.
+-- This lets you freely compose complex behaviors from simpler route handlers.
 pools{
-    foo = {
+    one = {
         backends = {
             "127.0.0.1:11214",
-            "127.0.0.1:11215 _down_",
+            "127.0.0.1:11215",
         }
     },
-    bar = {
+    two = {
         backends = {
             "127.0.0.1:11216",
+        }
+    },
+    three = {
+        backends = {
+            "127.0.0.1:11217",
         }
     },
 }
@@ -20,7 +27,7 @@ routes{
         foo = route_split{
             child_a = "foo",
             child_b = route_allfastest{
-                children = { "bar" }
+                children = { "two", "three" }
             },
         },
     },
