@@ -18,11 +18,11 @@ pools{
 
 routes{
     cmap = {
-        get = route_allfastest{
-            children = { "foo" },
+        get = route_direct{
+            child = "foo",
         },
     },
-    default = route_allfastest{
-        children = { "bar" }
+    default = route_direct{
+        child = "bar",
     },
 }

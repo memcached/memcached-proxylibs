@@ -1,6 +1,6 @@
 settings{
     backend_options = {
-        zlog = {
+        log = {
             rate = 5, -- log one out of every 5 by random chance
             errors = true, -- log all errors
             deadline = 250, -- log all results slower than 250ms
