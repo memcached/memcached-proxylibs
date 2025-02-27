@@ -27,6 +27,18 @@ pools{
                 "127.0.0.1:11313",
             }
         }
+    },
+    set_one_two = {
+        z1 = {
+            backends = {
+                "127.0.0.1:11312",
+            }
+        },
+        z2 = {
+            backends = {
+                "127.0.0.1:11313",
+            }
+        }
     }
 }
 
@@ -38,6 +50,12 @@ routes{
         },
         bar = route_allsync{
             children = "set_bar",
+        },
+        cee = route_allsync{
+            children = "set_one_two",
+        },
+        cea = route_direct{
+            child = "set_bar_z1",
         },
         baz = route_allsync{
             children = { "foo", "baz" },

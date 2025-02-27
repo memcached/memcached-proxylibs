@@ -694,14 +694,12 @@ local function make_router(set, pools)
             -- else match against pools directly
             local set, name = string.match(child, "^(set_%w+)_(.+)")
             if set and name then
-                if pools[set] == nil then
-                    error("no pool set matching: " .. set)
+                if pools[set] ~= nil then
+                    if pools[set][name] ~= nil then
+                        -- querying within a pool set
+                        return pools[set][name]
+                    end
                 end
-                if pools[set][name] == nil then
-                    error("no pool set zone matching: " .. child)
-                end
-                -- querying within a pool set
-                return pools[set][name]
             end
 
             -- still starts with set_, so we want to copy out that table.
