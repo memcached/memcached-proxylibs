@@ -1,5 +1,13 @@
 -- This library should originate from:
 -- https://github.com/memcached/memcached-proxylibs/tree/main/lib/routelib
+--
+-- GUIDE:
+-- - functions near the top section under "User interface" are called from the
+-- user config file
+-- - functions prefixed with main_* are routelib internal functions called in
+-- the configuration thread
+-- - functions prefixed with worker_* are routelib internal functions called
+-- on worker threads during the route config phase.
 
 local STATS_MAX <const> = 1024
 
@@ -65,7 +73,7 @@ local RouteConf = {}
 local BuiltPoolSet = {} -- processed pool set.
 
 -- TODO: this can/should be seeded only during config_pools
-local function module_defaults(old)
+local function main_module_defaults(old)
     local stats = {
         map = {},
         freelist = {},
@@ -83,11 +91,13 @@ local function module_defaults(old)
         stats = stats,
     }
 end
-__M = module_defaults(__M)
+__M = main_module_defaults(__M)
 local M = __M
 
 --
 -- User interface functions
+--
+-- These are only called from the user config file.
 --
 
 function settings(a)
@@ -116,11 +126,6 @@ function routes(a)
     else
         M.c_in.routes["default"] = a
     end
-end
-
--- TODO: match regexp list against set of pools
-function find_pools(m)
-    error("unimplemented")
 end
 
 function local_zone(zone)
@@ -199,10 +204,13 @@ end
 --
 -- User/Pool configuration thread functions
 --
+-- These functions, prefixed with main_ execute centrally in the configuration
+-- thread.
+--
 
 -- TODO: this wrapper func will allow for loading json vs lua or special error
 -- handling. Presently it does little.
-local function load_userconfig(file)
+local function main_load_userconfig(file)
     if file == nil then
         error("must provide config file via -o proxy_arg")
     end
@@ -210,7 +218,7 @@ local function load_userconfig(file)
 end
 
 -- TODO: remember values and add to verbose print if changed on reload
-local function settings_parse(a)
+local function main_settings_parse(a)
     local setters = {
         ["backend_connect_timeout"] = function(v)
             mcp.backend_connect_timeout(v)
@@ -322,7 +330,7 @@ local function make_backend(name, host, o)
     return mcp.backend(b)
 end
 
-local function pools_make(conf)
+local function main_pools_make(conf)
     local popts = {}
     -- seed global overrides
     if M.pool_options then
@@ -366,7 +374,7 @@ end
 
 -- converts a table describing pool objects into a new table of real pool
 -- objects.
-local function pools_parse(a)
+local function main_pools_parse(a)
     local pools = {}
     for name, conf in pairs(a) do
         if name == "internal" then
@@ -379,12 +387,12 @@ local function pools_parse(a)
             local pset = {}
             for sname, sconf in pairs(conf) do
                 dsay("making pool:", sname, "\n", dump(sconf))
-                pset[sname] = pools_make(sconf)
+                pset[sname] = main_pools_make(sconf)
             end
             pools[name] = setmetatable(pset, BuiltPoolSet)
         else
             dsay("making pool:", name, "\n", dump(conf))
-            pools[name] = pools_make(conf)
+            pools[name] = main_pools_make(conf)
         end
     end
 
@@ -481,7 +489,7 @@ end
 -- routes that have stats should assign stats or global overrides in this conf
 -- stage.
 -- NOTE: we are editing the entries in-place
-local function configure_router(set, pools, c_in)
+local function main_configure_router(set, pools, c_in)
     -- create ctx object to hold label + command
     local ctx = {
         label = function(self)
@@ -557,7 +565,7 @@ end
 -- by default we just do CMD_ANY_STORAGE
 -- NOTE: this function should be used for vadliating/preparsing the router
 -- config and routes sections.
-local function routes_parse(c_in, pools)
+local function main_routes_parse(c_in, pools)
     local routes = c_in.routes
 
     local found = false
@@ -571,7 +579,7 @@ local function routes_parse(c_in, pools)
             end
         end
 
-        configure_router(set, pools, c_in)
+        main_configure_router(set, pools, c_in)
         found = true
     end
 
@@ -594,7 +602,7 @@ end
 -- 3) this is probably improvable in the future once all the pre-API2 code is
 -- dropped and we can attach stats ID's to rctx's and do this
 -- recycling work internally in the proxy.
-local function stats_turnover()
+local function main_stats_turnover()
     local st = M.stats
 
     if st.old_map then
@@ -616,17 +624,19 @@ end
 --
 -- Worker thread configuration functions
 --
+-- These functions only run in the worker threads.
+--
 
 -- re-wrap the arguments to create the function generator within a worker
 -- thread.
-local function make_route(arg, ctx)
+local function worker_make_route(arg, ctx)
     dsay("generating a route:", ctx:label(), ctx:cmd())
     -- walk the passed arg table for any children to process.
     for k, v in pairs(arg.a) do
         if type(k) == "string" and string.find(k, "^child") ~= nil then
             if type(v) == "table" then
                 if v._rlib_route then
-                    arg.a[k] = make_route(v, ctx)
+                    arg.a[k] = worker_make_route(v, ctx)
                 else
                     -- child = { route{}, "bar"}
                     -- child = { foo = bar, baz = route{} }
@@ -635,7 +645,7 @@ local function make_route(arg, ctx)
                         -- TODO: else if table throw error?
                         -- should limit child recursion.
                         if type(cv) == "table" and cv._rlib_route then
-                            v[ck] = make_route(cv, ctx)
+                            v[ck] = worker_make_route(cv, ctx)
                         elseif type(cv) == "string" then
                             v[ck] = ctx:get_child(cv)
                         end
@@ -664,7 +674,7 @@ end
 -- NOTE: we do an unfortunate duck typing of a map entry, as metatables can't
 -- cross the cross-VM barrier so we can't type the route handlers. Map entries
 -- can have sub-maps and they'll both just look like tables.
-local function make_router(set, pools)
+local function worker_make_router(set, pools)
     local map = {}
     local cmap = {}
     dsay("making a new router")
@@ -729,7 +739,7 @@ local function make_router(set, pools)
     if set.default then
         ctx._label = "default"
         ctx._cmd = mcp.CMD_ANY_STORAGE
-        conf.default = make_route(set.default, ctx)
+        conf.default = worker_make_route(set.default, ctx)
     end
 
     if set.map then
@@ -743,7 +753,7 @@ local function make_router(set, pools)
                 for cmk, cmv in pairs(mv) do
                     ctx._label = mk
                     ctx._cmd = cmk
-                    local fgen = make_route(cmv, ctx)
+                    local fgen = worker_make_route(cmv, ctx)
                     if fgen == nil then
                         error("route start handler did not return a generator")
                     end
@@ -755,7 +765,7 @@ local function make_router(set, pools)
                 -- route function
                 ctx._label = mk
                 ctx._cmd = mcp.CMD_ANY_STORAGE
-                local fgen = make_route(mv, ctx)
+                local fgen = worker_make_route(mv, ctx)
                 if fgen == nil then
                     error("route start handler did not return a generator")
                 end
@@ -770,7 +780,7 @@ local function make_router(set, pools)
         ctx._label = "cmdmap"
         for cmk, cmv in pairs(set.cmap) do
             ctx._cmd = cmk
-            local fgen = make_route(cmv, ctx)
+            local fgen = worker_make_route(cmv, ctx)
             if fgen == nil then
                 error("route start handler did not return a generator")
             end
@@ -791,7 +801,7 @@ end
 -- mcp_config_pools executes from the configuration thread
 -- mcp_config_routes executes from each worker thread
 
-function mcp_config_dump_state(c)
+function main_config_dump_state(c)
     if M.is_debug then
         dsay("======== GLOBAL SETTINGS CONFIG ========")
         dsay(dump_pretty(c.settings))
@@ -805,29 +815,29 @@ function mcp_config_dump_state(c)
 end
 
 function mcp_config_pools()
-    load_userconfig(mcp.start_arg)
+    main_load_userconfig(mcp.start_arg)
     dsay("=== mcp_config_pools: start ===")
     -- create all necessary pool objects and prepare the configuration for
     -- passing on to workers
     -- Step 0) update global settings if requested
     if M.c_in.settings then
-        settings_parse(M.c_in.settings)
+        main_settings_parse(M.c_in.settings)
     end
-    mcp_config_dump_state(M.c_in)
+    main_config_dump_state(M.c_in)
 
     -- Step 1) create pool objects
-    local pools = pools_parse(M.c_in.pools)
+    local pools = main_pools_parse(M.c_in.pools)
     -- Step 2) prepare router descriptions
-    local conf = routes_parse(M.c_in, pools)
+    local conf = main_routes_parse(M.c_in, pools)
     -- Step 3) Reset global configuration
-    stats_turnover()
+    main_stats_turnover()
     dsay("=== mcp_config_pools: done ===")
 
     -- let say/dsay work in the worker reload stage
     conf.is_verbose = M.is_verbose
     conf.is_debug = M.is_debug
 
-    M = module_defaults(M)
+    M = main_module_defaults(M)
 
     return conf
 end
@@ -854,7 +864,7 @@ function mcp_config_routes(c)
     -- the function generators, and the top level router object.
     for tag, set in pairs(routes) do
         dsay("building root for tag:", tag)
-        local root = make_router(set, pools)
+        local root = worker_make_router(set, pools)
         if tag == "default" then
             dsay("attaching to proxy default tag")
             mcp.attach(mcp.CMD_ANY_STORAGE, root)
