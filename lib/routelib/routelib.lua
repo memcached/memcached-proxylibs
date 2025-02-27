@@ -406,12 +406,8 @@ end
 local function configure_route(r, ctx)
     local route = r.a
 
-    -- TODO: think we can take the built pools list and actually validate here
-    -- that the children all index properly.
-    -- this would ensure errors happen during the config stage instead of the
-    -- worker load stage.
-
     -- first, recurse and resolve any children.
+    -- also check them for validity once they should be pools
     for k, v in pairs(route) do
         -- try to not accidentally coerce a non-string key into a string!
         if type(k) == "string" and string.find(k, "^child") ~= nil then
@@ -424,9 +420,13 @@ local function configure_route(r, ctx)
                     for ck, cv in pairs(v) do
                         if type(cv) == "table" and (getmetatable(cv) == RouteConf) then
                             v[ck] = configure_route(cv, ctx)
+                        else
+                            ctx:check_child(cv)
                         end
                     end
                 end
+            else -- if "table"
+                ctx:check_child(v)
             end -- if "table"
         end -- if "child"
     end -- for(route)
@@ -498,8 +498,41 @@ local function main_configure_router(set, pools, c_in)
         cmd = function(self)
             return self._cmd
         end,
-        pool = function(self, name)
-            return pools[name]
+        check_child = function(self, child)
+            -- ensure this child is a string of a valid pool
+            if type(child) ~= "string" then
+                error("checking child: invalid child given to route handler: " .. type(child))
+            end
+
+            -- shortcut for the magic internal pool.
+            if child == "internal" then
+                return true
+            end
+
+            local set, name = string.match(child, "^(set_%w+)_(.+)")
+            if set and name then
+                if pools[set] ~= nil then
+                    if pools[set][name] ~= nil then
+                        -- querying within a pool set
+                        return true
+                    end
+                end
+            end
+
+            -- still starts with set_, so we want to copy out that table.
+            if string.find(child, "^set_") ~= nil then
+                if pools[child] == nil then
+                    error("checking child: no pool set matching: " .. child)
+                end
+                return true
+            end
+
+            -- else we're directly querying a pool.
+            if pools[child] == nil then
+                error("checking child: no pool matching: " .. child)
+            end
+
+            return true
         end,
         local_zone = function(self)
             return c_in.local_zone
@@ -686,9 +719,10 @@ local function worker_make_router(set, pools)
         cmd = function(self)
             return self._cmd
         end,
-        -- TODO: while we check and throw errors here, we should instead
-        -- prefer to check this stuff on the mcp_config_pools side to avoid
-        -- throwing unrecoverable errors.
+        -- NOTE: while we check and throw errors here, this is after checking
+        -- for the same errors during the pools config phase. Thus if these
+        -- errors fire something has gone seriously wrong with routelib
+        -- itself.
         get_child = function(self, child)
             if type(child) ~= "string" then
                 error("invalid child given to route handler: " .. type(child))
