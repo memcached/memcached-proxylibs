@@ -427,8 +427,8 @@ local function configure_route_wrap(r, ctx)
         end
         rn.a = {}
         -- then shallow copy of the argument list
-        for k, v in pairs(rn.a) do
-            rn.a[k] = r.a[k]
+        for k, v in pairs(r.a) do
+            rn.a[k] = v
         end
 
         -- reuse the same route config, but once for each child.
