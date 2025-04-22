@@ -405,7 +405,6 @@ local function configure_route_wrap(r, ctx)
     local route = r.a
     -- wrap the child data into a new table
     local children = route.child_wrap
-    route["child_wrap"] = nil
     -- recursion case: another child needs to first transform into children
     if (getmetatable(children) == RouteConf) then
         dsay("running possible recursive child_wrap child")
@@ -433,6 +432,7 @@ local function configure_route_wrap(r, ctx)
 
         -- reuse the same route config, but once for each child.
         rn.a.child = v
+        rn.a.child_wrap = nil
         t[k] = configure_route(rn, ctx)
     end
 
