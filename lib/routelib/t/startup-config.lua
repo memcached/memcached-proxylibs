@@ -69,5 +69,11 @@ routes{
         gee = route_allsync{
             children = { "foo", route_direct{ child = "baz" } },
         },
+        wrp = route_allsync{
+            children = route_direct{ child_wrap = "set_bar" },
+        },
+        wrapr = route_allsync{
+            children = route_direct{ child_wrap = route_direct{ child_wrap = "set_bar" } },
+        },
     }
 }

@@ -399,11 +399,52 @@ local function main_pools_parse(a)
     return pools
 end
 
+-- Magic function for turning a route handler into a set of route handlers,
+-- based on a pool set or list of route handlers.
+local function configure_route_wrap(r, ctx)
+    local route = r.a
+    -- wrap the child data into a new table
+    local children = route.child_wrap
+    route["child_wrap"] = nil
+    -- recursion case: another child needs to first transform into children
+    if (getmetatable(children) == RouteConf) then
+        dsay("running possible recursive child_wrap child")
+        children = configure_route(children, ctx)
+        if (children._rlib_route) then
+            error("child_wrap argument must be a list of children, not a single route")
+        end
+    end
+
+    -- IF "set_" then expand to array of "set_name_key" strings
+    -- set child to textual name and continue
+    children = ctx:expand_children(children)
+    local t = {}
+    for k, v in pairs(children) do
+        local rn = {}
+        -- shallow copy of the route handler.
+        for k, v in pairs(r) do
+            rn[k] = v
+        end
+        rn.a = {}
+        -- then shallow copy of the argument list
+        for k, v in pairs(rn.a) do
+            rn.a[k] = r.a[k]
+        end
+
+        -- reuse the same route config, but once for each child.
+        rn.a.child = v
+        t[k] = configure_route(rn, ctx)
+    end
+
+    return t
+end
+
 -- 1) walk keys looking for child*, recurse if RouteConfs are found
 -- 2) resolve and call route.f
 -- 3) return the response directly. the _conf() function should handle
 -- anything that needs global context in the mcp_config_pools stage.
-local function configure_route(r, ctx)
+-- FIXME: non-local func because configure_route_wrap can't find it
+function configure_route(r, ctx)
     local route = r.a
 
     -- first, recurse and resolve any children.
@@ -411,10 +452,16 @@ local function configure_route(r, ctx)
     for k, v in pairs(route) do
         -- try to not accidentally coerce a non-string key into a string!
         if type(k) == "string" and string.find(k, "^child") ~= nil then
+            if k == "child_wrap" then
+                dsay("Wrapping route around multiple children:", k)
+                return configure_route_wrap(r, ctx)
+            end
             dsay("Checking child for route:", k)
             if type(v) == "table" then
                 if (getmetatable(v) == RouteConf) then
                     route[k] = configure_route(v, ctx)
+                elseif type(v) == "table" and v._rlib_route then
+                    -- already processed
                 else
                     -- it is a table of children.
                     for ck, cv in pairs(v) do
@@ -533,6 +580,26 @@ local function main_configure_router(set, pools, c_in)
             end
 
             return true
+        end,
+        expand_children = function(self, children)
+            if type(children) == "table" then
+                -- nothing to do.
+                return children
+            elseif type(children) == "string" then
+                if string.find(children, "^set_") ~= nil then
+                    if pools[children] == nil then
+                        error("checking child: no pool set matching: " .. children)
+                    else
+                        local t = {}
+                        for k, v in pairs(pools[children]) do
+                            t[k] = children .. "_" .. k
+                        end
+                        return t
+                    end
+                else
+                    error("child_wrap expected a pool set but received single pool: " .. children)
+                end
+            end
         end,
         local_zone = function(self)
             return c_in.local_zone
