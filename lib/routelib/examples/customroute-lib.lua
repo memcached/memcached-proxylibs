@@ -25,7 +25,7 @@ function route_myhello_conf(t, ctx)
     -- you could construct a string from the label to get a route and handler
     -- specific counter instead.
     if t.stats then
-        t.stast_id = ctx:stats_get_id("myhello")
+        t.stats_id = ctx:stats_get_id("myhello")
     end
 
     -- the result table must be a pure lua object, as it is copied between
