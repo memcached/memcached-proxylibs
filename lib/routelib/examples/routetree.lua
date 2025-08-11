@@ -1,6 +1,3 @@
-verbose(true)
-debug(true)
-
 -- A route handler can accept another route handler for any child type entry.
 -- This lets you freely compose complex behaviors from simpler route handlers.
 pools{

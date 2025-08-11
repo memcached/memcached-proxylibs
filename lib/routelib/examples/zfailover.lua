@@ -1,6 +1,3 @@
-verbose(true)
-debug(true)
-
 -- TODO: example of pulling from envvar
 -- set our local zone for the file.
 local_zone("foo")

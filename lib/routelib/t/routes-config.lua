@@ -1,5 +1,3 @@
---verbose(true)
---debug(true)
 --local_zone("zbar")
 
 settings{

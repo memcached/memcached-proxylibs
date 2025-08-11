@@ -1,4 +1,9 @@
---verbose(true)
+-- uncommenting this changes the verbosity of logging output for routelib.
+-- this does not affect the verbosity of memcached.
+-- verbose = true -- extra logging
+-- debug = true -- debug logging for writing custom handlers
+-- trace = true -- line by line execution output
+--verbosity({ verbose = true, debug = true, trace = true })
 
 -- see https://docs.memcached.org/features/proxy/ for full details
 -- on various options.

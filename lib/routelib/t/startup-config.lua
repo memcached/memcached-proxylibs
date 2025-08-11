@@ -1,5 +1,4 @@
---verbose(true)
---debug(true)
+--verbosity({ verbose = true, debug = true, trace = true })
 
 settings{
     backend_connect_timeout = 3,

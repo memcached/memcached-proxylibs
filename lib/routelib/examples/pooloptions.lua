@@ -1,6 +1,3 @@
-verbose(true)
-debug(true)
-
 settings{
     active_req_limit = 100,
     backend_connect_timeout = 3,

@@ -160,16 +160,71 @@ function local_zone_from_file(filename)
     M.c_in.local_zone = zone
 end
 
+function verbosity(opt)
+    if type(opt) ~= "table" then
+        error("verbosity takes a table argument")
+    end
+
+    if opt.verbose then
+        M.is_verbose = true
+        say("verbose logging enabled")
+    else
+        if M.is_verbose then
+            M.is_verbose = false
+            say("verbose logging disabled")
+        end
+    end
+    if opt.debug then
+        M.is_debug = true
+        say("debug logging enabled")
+    else
+        if M.is_debug then
+            M.is_debug = false
+            say("debug logging disabled")
+        end
+    end
+    if opt.trace then
+        M.is_trace = true
+        say("logging enabled")
+    else
+        if M.is_trace then
+            M.is_trace = false
+            say("trace logging disabled")
+        end
+    end
+end
+
 function verbose(opt)
     M.is_verbose = opt
     say("verbosity set to:", opt)
 end
 
-function debug(opt)
-    M.is_debug = opt
-    if M.is_debug or M.is_verbose then
-        print("debug set to:", opt)
+local function dbg_trace(dbg, event, line, tname)
+    local s = dbg.short_src
+    local n = "unknown"
+    if dbg.name then
+        n = dbg.name
     end
+    print(string.format("%s:%s:%s:%s", tname, s, n, line))
+end
+
+local function dbg_ptrace(event, line)
+    local dbg = debug.getinfo(2)
+    dbg_trace(dbg, event, line, "config")
+end
+
+local function dbg_wtrace(event, line)
+    local dbg = debug.getinfo(2)
+    dbg_trace(dbg, event, line, "worker")
+end
+
+local function dbg_htrace(event, line)
+    local dbg = debug.getinfo(2)
+    dbg_trace(dbg, event, line, "handler")
+end
+
+function dbg_handler_trace()
+    debug.sethook(htrace, "l")
 end
 
 function say(...)
@@ -916,6 +971,9 @@ function main_config_dump_state(c)
 end
 
 function mcp_config_pools()
+    if M.is_trace then
+        debug.sethook(dbg_ptrace, "l")
+    end
     main_load_userconfig(mcp.start_arg)
     dsay("=== mcp_config_pools: start ===")
     -- create all necessary pool objects and prepare the configuration for
@@ -937,6 +995,7 @@ function mcp_config_pools()
     -- let say/dsay work in the worker reload stage
     conf.is_verbose = M.is_verbose
     conf.is_debug = M.is_debug
+    conf.is_trace = M.is_trace
 
     M = main_module_defaults(M)
 
@@ -958,6 +1017,13 @@ function mcp_config_routes(c)
     local pools = c.p
     M.is_verbose = c.is_verbose
     M.is_debug = c.is_debug
+    M.is_trace = c.is_trace
+
+    if M.is_trace then
+        -- NOTE: trace does not follow into route handlers since those are new
+        -- coroutines?
+        debug.sethook(dbg_wtrace, "l")
+    end
 
     dsay("=== mcp_config_routes: start ===")
 

@@ -7,9 +7,6 @@
 -- get foo/a
 -- SERVER_ERROR hello, world: foo
 
-verbose(true)
-debug(true)
-
 -- pools not actually used in this example.
 pools{
     foo = {

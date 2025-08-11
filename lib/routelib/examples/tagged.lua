@@ -1,7 +1,3 @@
--- uncomment to debug
---verbose(true)
---debug(true)
-
 -- it's possible to have different route trees based on the listener port.
 -- this is useful if you want to route to different pools by port alone, or
 -- have different prefix trees for different services.

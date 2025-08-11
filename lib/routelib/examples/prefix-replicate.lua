@@ -5,8 +5,7 @@
 -- spread across a pool of servers to maximize available memory. Then, a small
 -- set of highly accessed "hot" keys are replicated across multiple servers
 
---verbose(true)
---debug(true)
+-- verbosity({ verbose = true, debug = true })
 
 pools{
     main = {

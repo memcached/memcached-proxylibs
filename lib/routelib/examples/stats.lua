@@ -1,6 +1,3 @@
-verbose(true)
-debug(true)
-
 -- we configure route_failover to track itself with a stats counter, accessable
 -- via "stats proxy" under user_* fields.
 pools{
