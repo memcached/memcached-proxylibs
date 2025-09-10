@@ -591,7 +591,7 @@ end
 -- routes that have stats should assign stats or global overrides in this conf
 -- stage.
 -- NOTE: we are editing the entries in-place
-local function main_configure_router(set, pools, c_in)
+local function main_configure_router(set, pools, c_in, tag)
     -- create ctx object to hold label + command
     local ctx = {
         label = function(self)
@@ -599,6 +599,9 @@ local function main_configure_router(set, pools, c_in)
         end,
         cmd = function(self)
             return self._cmd
+        end,
+        listen_tag = function(self)
+            return self._listen_tag
         end,
         check_child = function(self, child)
             -- ensure this child is a string of a valid pool
@@ -665,6 +668,7 @@ local function main_configure_router(set, pools, c_in)
             return id
         end
     }
+    ctx._listen_tag = tag
 
     if set.map then
         -- a prefix map
@@ -734,7 +738,7 @@ local function main_routes_parse(c_in, pools)
             end
         end
 
-        main_configure_router(set, pools, c_in)
+        main_configure_router(set, pools, c_in, tag)
         found = true
     end
 
