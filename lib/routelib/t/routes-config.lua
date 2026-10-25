@@ -92,6 +92,9 @@ routes{
         allsync = route_allsync{
             children = { "foo", "bar", "baz" }
         },
+        allasync = route_allasync{
+            children = { "foo", "bar", "baz" }
+        },
         zfailover = route_zfailover{
             local_zone = "zbar",
             children = "set_all",

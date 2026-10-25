@@ -1774,6 +1774,7 @@ register_route_handlers({
     "failover",
     "allfastest",
     "allsync",
+    "allasync",
     "split",
     "direct",
     "zfailover",

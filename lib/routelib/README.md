@@ -240,6 +240,19 @@ route_allsync{
 }
 ```
 
+### `route_allasync`
+
+Routes a request to all supplied pools in parallel, in the background.
+Returns immediately with a "null" response for the command (ie; `EN` for a
+meta get, `NOT_FOUND` for a delete) without waiting for any pool. The
+backend results are discarded.
+
+```lua
+route_allasync{
+    children = { "poola", "poolb", "poolc" }
+}
+```
+
 ### `route_allfastest`
 
 Routes a request to all supplied pools in parallel. Returns the first response
