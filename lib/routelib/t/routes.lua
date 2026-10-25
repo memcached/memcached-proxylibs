@@ -552,6 +552,30 @@ function TestAllSync:testError()
     clearAll(p)
 end
 
+-- returns a "null" response right away and lets the requests finish in the
+-- background.
+TestAllAsync = {}
+
+function TestAllAsync:testBasic()
+    p:c_send("mg allasync/a t\r\n")
+    p:c_recv("EN\r\n", "client answered before the backends")
+    p:be_recv_c({1, 2, 3}, "all three got request")
+    p:be_send(1, "HD t1\r\n")
+    p:be_send(2, "HD t2\r\n")
+    p:be_send(3, "HD t3\r\n")
+    clearAll(p)
+end
+
+function TestAllAsync:testErrorIgnored()
+    p:c_send("mg allasync/a t\r\n")
+    p:c_recv("EN\r\n", "client answered before the backends")
+    p:be_recv_c({1, 2, 3}, "all three got request")
+    p:be_send(1, "SERVER_ERROR botched\r\n")
+    p:be_send(2, "HD t2\r\n")
+    p:be_send(3, "HD t3\r\n")
+    clearAll(p)
+end
+
 TestFailoverZone = {}
 -- local zone is set to 2 to ensure we don't just send to the
 -- first/second/third in the list.

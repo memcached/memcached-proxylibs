@@ -1388,7 +1388,38 @@ end
 -- route_allasync start
 --
 
-function route_allasync_conf(t)
+-- Options (besides children):
+--   retry: table of route_retry options. The children are sent to as one
+--          route_retry sub-request, which keeps retrying failed children in
+--          the background after the client has been answered.
+--   max_pending:  back-pressure. When more than this many requests are active
+--                 on a worker thread (not counting requests that only wait for
+--                 a retry), the route waits for its children before answering
+--                 the client, instead of answering at once. A client
+--                 connection does not read further requests while one is
+--                 waiting, so overload slows the clients down rather than
+--                 queueing background requests in memory without bound.
+--                 Needs mcp.active_requests(). Default: off.
+--   pending_wait: maximum seconds to wait in that case (default 0.05). The
+--                 children keep running in the background after a timeout. A
+--                 waiting connection handles about one request per wait, so
+--                 keep it short: it only has to slow the clients down.
+-- Counter in "stats proxy": allasync_throttled (requests that waited).
+function route_allasync_conf(t, ctx)
+    if t.max_pending then
+        t.stats_throttled = ctx:get_stats_id("allasync_throttled")
+    end
+    if t.retry then
+        -- move the children under a single route_retry child, which keeps
+        -- running (and retrying) after the client has been answered.
+        local r = {}
+        for k, v in pairs(t.retry) do
+            r[k] = v
+        end
+        r.children = t.children
+        t.children = { { f = "retry", _rlib_route = true, a = route_retry_conf(r, ctx) } }
+        t.retry = nil
+    end
     return t
 end
 
@@ -1396,10 +1427,25 @@ local function route_allasync_f(rctx, arg)
     local handles = arg.h
     local mut = arg.m
     local nres = rctx:response_new()
+    local max_pending = arg.max_pending
+    local pending_wait = arg.pending_wait
+    local nhandles = #handles
+    local st_throttled = arg.stats_throttled
+    local active = mcp.active_requests
+    local s = mcp.stat
+    local state = routelib_retry_state -- see route_retry
+    local WAIT_ANY = mcp.WAIT_ANY
 
     return function(r)
         rctx:enqueue(r, handles)
-        rctx:wait_cond(0) -- do not wait
+        -- requests parked in a retry loop are bounded by its max_inflight;
+        -- they must not throttle new requests while one pool is down.
+        if max_pending and active() - state.inflight > max_pending then
+            s(st_throttled, 1)
+            rctx:wait_cond(nhandles, WAIT_ANY, pending_wait)
+        else
+            rctx:wait_cond(0) -- do not wait
+        end
         mut(nres, r) -- return a "NULL" response
         return nres
     end
@@ -1415,8 +1461,13 @@ function route_allasync_start(a, ctx, fgen)
         { t = "resnull", idx = 1 }
     )
 
+    if a.max_pending and mcp.active_requests == nil then
+        error("route_allasync: max_pending needs a memcached with mcp.active_requests()")
+    end
+
     fgen:ready({
-        a = { h = o, m = mut },
+        a = { h = o, m = mut, max_pending = a.max_pending, pending_wait = a.pending_wait or 0.05,
+              stats_throttled = a.stats_throttled },
         u = 1,
         n = ctx:label(),
         f = route_allasync_f,
@@ -1425,6 +1476,255 @@ end
 
 --
 -- route_allasync end
+--
+
+--
+-- route_retry start
+--
+-- Sends a request to one or more children (normally pools) and retries the
+-- children that failed, with exponential backoff. A child failed when its
+-- backend could not be reached, timed out, or answered SERVER_ERROR. Other
+-- responses (ie; DELETED, NOT_FOUND, CLIENT_ERROR) are final.
+--
+-- On its own the route answers the client once every child succeeded or was
+-- given up on, which can take up to retry_for. It is meant to run in the
+-- background, which the "retry" option of route_allasync does:
+--
+--   delete = route_allasync{
+--       children = { "pool_a", "pool_b", "pool_c" },
+--       retry = { retry_for = 60 },
+--   }
+--
+-- which is shorthand for:
+--
+--   delete = route_allasync{ children = {
+--       route_retry{ children = { "pool_a", "pool_b", "pool_c" }, retry_for = 60 },
+--   } }
+--
+-- Options:
+--   child / children: one child, or a list of children
+--   retry_for:    seconds to keep retrying a failed child (default 30)
+--   backoff:      first sleep between attempts in seconds (default 0.25)
+--   backoff_max:  cap for the exponential sleep in seconds (default 5)
+--   attempts:     max attempts per child including the first one (default:
+--                 enough to cover retry_for, at most 16)
+--   wait:         per attempt timeout in seconds (default: the backend
+--                 timeouts)
+--   max_inflight: limit of requests waiting to be retried on a worker
+--                 thread, counted across all retry routes. Failures beyond
+--                 the limit are dropped and counted, which bounds memory
+--                 during long outages (default 5000)
+--   stats_name:   prefix for the counters (default "retry")
+--
+-- Counters in "stats proxy", per child (pool children by name, other
+-- children by position):
+--   <stats_name>_<child>_retries    retry attempts sent
+--   <stats_name>_<child>_recovered  requests that succeeded after retrying
+--   <stats_name>_<child>_dropped    requests given up on (retry_for,
+--                                   attempts or max_inflight exhausted)
+--   retry_inflight                  gauge: requests waiting to be retried,
+--                                   across all retry routes
+--
+-- Each child normally has one request slot that is reset with
+-- rctx:handle_reset() and reused for every attempt. Without that method
+-- (older memcached), and with "wait" (an attempt can still be in flight when
+-- its wait times out), every attempt gets its own slot instead, which costs
+-- memory per in-flight request.
+
+-- per worker VM: requests currently in the retry loop across all routes.
+-- Kept in a global so it survives config reloads: worker VMs re-run this file
+-- on every reload, while retry loops started under the old config keep
+-- running (and counting) until they finish.
+routelib_retry_state = routelib_retry_state or { inflight = 0 }
+local RETRY_STATE = routelib_retry_state
+
+function route_retry_conf(t, ctx)
+    if t.child ~= nil and t.children == nil then
+        t.children = { t.child }
+        t.child = nil
+    end
+    if t.children == nil or #t.children == 0 then
+        error("route_retry requires child or children")
+    end
+    local prefix = t.stats_name or "retry"
+    t.stats = {}
+    for i, child in ipairs(t.children) do
+        local name = prefix .. "_" .. (type(child) == "string" and child or tostring(i))
+        t.stats[i] = {
+            retries = ctx:get_stats_id(name .. "_retries"),
+            recovered = ctx:get_stats_id(name .. "_recovered"),
+            dropped = ctx:get_stats_id(name .. "_dropped"),
+        }
+    end
+    t.stats_inflight = ctx:get_stats_id("retry_inflight")
+    return t
+end
+
+local function route_retry_f(rctx, arg)
+    local handles = arg.h -- handles[child], or handles[child][attempt]
+    local nchildren = #handles
+    local attempts = arg.attempts
+    local retry_for = arg.retry_for * 1000
+    local backoff_start = arg.backoff
+    local backoff_max = arg.backoff_max
+    local max_inflight = arg.max_inflight
+    local wait = arg.wait
+    local reuse = arg.reuse
+    local stats = arg.stats
+    local st_inflight = arg.stats_inflight
+    local s = mcp.stat
+    local state = RETRY_STATE
+    local WAIT_ANY = mcp.WAIT_ANY
+    local CODE_SERVER_ERROR = mcp.MCMC_CODE_SERVER_ERROR
+
+    local function failed(res)
+        return res == nil or not res:ok() or res:code() == CODE_SERVER_ERROR
+    end
+
+    local function handle(c, n)
+        if reuse then
+            return handles[c]
+        end
+        return handles[c][n]
+    end
+
+    -- send attempt n to the listed children, wait for all of them, and
+    -- return the children that still failed plus the last result seen.
+    local function send(r, n, list)
+        local queued = 0
+        for _, c in ipairs(list) do
+            local h = handle(c, n)
+            -- without "wait" the previous attempt completed, so the reset
+            -- succeeds; if not, the child counts as failed below.
+            if n == 1 or not reuse or rctx:handle_reset(h) then
+                rctx:enqueue(r, h)
+                queued = queued + 1
+            end
+        end
+        if queued > 0 then
+            if wait then
+                rctx:wait_cond(queued, WAIT_ANY, wait)
+            else
+                rctx:wait_cond(queued, WAIT_ANY)
+            end
+        end
+        local failures = {}
+        local last = nil
+        for _, c in ipairs(list) do
+            local res = rctx:result(handle(c, n))
+            if res ~= nil then
+                last = res
+            end
+            if failed(res) then
+                table.insert(failures, c)
+            elseif n > 1 then
+                s(stats[c].recovered, 1)
+            end
+        end
+        return failures, last
+    end
+
+    local all = {}
+    for c = 1, nchildren do
+        all[c] = c
+    end
+
+    return function(r)
+        local pending, res = send(r, 1, all)
+        if #pending == 0 then
+            return res
+        end
+
+        if attempts < 2 or state.inflight >= max_inflight then
+            for _, c in ipairs(pending) do
+                s(stats[c].dropped, 1)
+            end
+            return res
+        end
+
+        state.inflight = state.inflight + 1
+        s(st_inflight, 1)
+        local deadline = mcp.time_mono_millis() + retry_for
+        local backoff = backoff_start
+        for n = 2, attempts do
+            if mcp.time_mono_millis() + backoff * 1000 > deadline then
+                break
+            end
+            rctx:sleep(backoff)
+            backoff = math.min(backoff * 2, backoff_max)
+            for _, c in ipairs(pending) do
+                s(stats[c].retries, 1)
+            end
+            local last
+            pending, last = send(r, n, pending)
+            if last then
+                res = last
+            end
+            if #pending == 0 then
+                break
+            end
+        end
+
+        state.inflight = state.inflight - 1
+        s(st_inflight, -1)
+        for _, c in ipairs(pending) do
+            s(stats[c].dropped, 1)
+        end
+        return res
+    end
+end
+
+-- rctx:handle_reset() is only available in newer memcached versions.
+local function has_handle_reset()
+    local mt = debug.getregistry()["mcp.rcontext"]
+    return mt ~= nil and mt.handle_reset ~= nil
+end
+
+function route_retry_start(a, ctx, fgen)
+    dsay("starting a retry route handler")
+    local o = {
+        retry_for = a.retry_for or 30,
+        backoff = a.backoff or 0.25,
+        backoff_max = a.backoff_max or 5,
+        max_inflight = a.max_inflight or 5000,
+        wait = a.wait,
+        stats = a.stats,
+        stats_inflight = a.stats_inflight,
+    }
+
+    -- enough attempts to cover retry_for with the backoff schedule.
+    local attempts = a.attempts
+    if attempts == nil then
+        attempts = 1
+        local total = 0
+        local b = o.backoff
+        while total < o.retry_for and attempts < 16 do
+            total = total + b
+            b = math.min(b * 2, o.backoff_max)
+            attempts = attempts + 1
+        end
+    end
+    o.attempts = attempts
+
+    -- one reusable handle per child, or one per attempt (see above).
+    o.reuse = (o.wait == nil) and has_handle_reset()
+    o.h = {}
+    for c, child in ipairs(a.children) do
+        if o.reuse then
+            o.h[c] = fgen:new_handle(child)
+        else
+            o.h[c] = {}
+            for n = 1, attempts do
+                o.h[c][n] = fgen:new_handle(child)
+            end
+        end
+    end
+
+    fgen:ready({ a = o, n = ctx:label(), f = route_retry_f })
+end
+
+--
+-- route_retry end
 --
 
 --
@@ -1774,6 +2074,8 @@ register_route_handlers({
     "failover",
     "allfastest",
     "allsync",
+    "allasync",
+    "retry",
     "split",
     "direct",
     "zfailover",

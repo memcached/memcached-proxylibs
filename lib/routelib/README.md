@@ -240,6 +240,87 @@ route_allsync{
 }
 ```
 
+### `route_allasync`
+
+Routes a request to all supplied pools in parallel, in the background.
+Returns immediately with a "null" response for the command (ie; `EN` for a
+meta get, `NOT_FOUND` for a delete) without waiting for any pool. The
+backend results are discarded.
+
+```lua
+route_allasync{
+    children = { "poola", "poolb", "poolc" }
+}
+```
+
+With `retry`, children that fail are retried in the background (see
+`route_retry` for the options):
+
+```lua
+route_allasync{
+    children = { "poola", "poolb", "poolc" },
+    retry = { retry_for = 60 },
+}
+```
+
+Since the client is answered before the children finish, nothing slows down a
+client that sends faster than the pools can take requests; the backlog grows
+in memory. `max_pending` adds back-pressure: when more than that many
+requests are active on the worker thread (requests waiting in a `route_retry`
+loop are not counted), the route waits up to `pending_wait` seconds for its
+children before answering. A client connection doesn't send its next request
+while one is waiting, so overloaded clients slow down instead. The wait
+should stay short, since a throttled connection handles about one request
+per `pending_wait`. Requests that waited are counted in `allasync_throttled`.
+Requires a memcached with `mcp.active_requests()`.
+
+```lua
+route_allasync{
+    children = { "poola", "poolb", "poolc" },
+    max_pending = 4000,  -- per worker thread
+    pending_wait = 0.05, -- seconds (default 0.05)
+}
+```
+
+### `route_retry`
+
+Routes a request to all supplied children and retries the ones that failed,
+with exponential backoff. A child failed if its backend could not be
+reached, timed out, or answered `SERVER_ERROR`; any other response is final.
+On its own it answers the client once every child succeeded or was given up
+on. Use it through the `retry` option of `route_allasync` to answer the
+client right away and retry in the background.
+
+```lua
+route_retry{
+    children = { "poola", "poolb", "poolc" },
+    -- seconds to keep retrying a failed child (default 30)
+    retry_for = 30,
+    -- first sleep between attempts and its cap, in seconds
+    -- (defaults 0.25 and 5)
+    backoff = 0.25,
+    backoff_max = 5,
+    -- attempts per child including the first one (default: enough to
+    -- cover retry_for, at most 16)
+    attempts = 8,
+    -- requests in the retry loop per worker thread, across all retry
+    -- routes; failures past the limit are dropped (default 5000)
+    max_inflight = 5000,
+    -- optional per attempt timeout in seconds (default: backend timeouts)
+    -- wait = 1,
+    -- prefix for the stats counters (default "retry")
+    stats_name = "retry",
+}
+```
+
+Counters in `stats proxy` (child is the pool name, or its position):
+`<stats_name>_<child>_retries`, `<stats_name>_<child>_recovered`,
+`<stats_name>_<child>_dropped`, and the gauge `retry_inflight`.
+
+Each child reuses one request slot for all attempts when memcached has
+`rctx:handle_reset()`. With older versions, or with `wait`, each attempt
+needs its own slot, which uses more memory per request.
+
 ### `route_allfastest`
 
 Routes a request to all supplied pools in parallel. Returns the first response
